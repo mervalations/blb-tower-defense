@@ -9,6 +9,7 @@ window.PTD = window.PTD || {};
   const T = window.THREE;
   const TAU = Math.PI * 2;
   const W2T = (x, y, h) => new T.Vector3(x, h || 0, -y);
+  const FELT_H = 44;   // buildable felt is raised; lanes are channels cut into the table
 
   // ---------------------------------------------------------------- shared resources
   const cache = { mats: {}, tex: {}, geo: {}, text: new Map() };
@@ -210,11 +211,11 @@ window.PTD = window.PTD || {};
         shared = { canvas, gl, post: new Post(gl) };
       }
       this.gl = shared.gl; this.post = shared.post;
-      this.cam = { x: 0, y: 0, zoom: 0.12 };
-      this.view = { x: 0, y: 0, zoom: 0.12 };      // smoothed camera actually rendered
+      this.cam = { x: 0, y: 0, zoom: 0.12, yaw: 0, tilt: 0 };
+      this.view = { x: 0, y: 0, zoom: 0.12, yaw: 0, tilt: 0 };      // smoothed camera actually rendered
       this.camera = new T.PerspectiveCamera(42, 1, 20, 90000);
       this.raycaster = new T.Raycaster();
-      this.ground = new T.Plane(new T.Vector3(0, 1, 0), 0);
+      this.ground = new T.Plane(new T.Vector3(0, 1, 0), -FELT_H);   // clicks land on the felt surface
       this.shake = 0; this.flash = 0; this.cine = null;
       this.towerObjs = new Map(); this.creepObjs = new Map(); this.shotObjs = new Map(); this.fxObjs = new Map();
       this.particles = []; this.frame = 0; this.slowFrames = 0;
@@ -255,6 +256,7 @@ window.PTD = window.PTD || {};
       floor.rotation.x = -Math.PI / 2; floor.position.y = -900; floor.receiveShadow = true;
       S.add(floor);
 
+      this.buildFelt(board);
       this.buildWalls();
       this.buildVault();
       this.buildPortals();
@@ -268,6 +270,51 @@ window.PTD = window.PTD || {};
       this.rangeRing.rotation.x = -Math.PI / 2; this.rangeRing.visible = false; S.add(this.rangeRing);
       this.rangeFill = new T.Mesh(new T.CircleGeometry(1, 64), new T.MeshBasicMaterial({ color: 0xffe08a, transparent: true, opacity: 0.07, depthWrite: false }));
       this.rangeFill.rotation.x = -Math.PI / 2; this.rangeFill.visible = false; S.add(this.rangeFill);
+    }
+
+    // Merge grid cells of one class into rectangles (row runs extended upward).
+    rectsOf(cls) {
+      const map = this.game.map, N = map.size;
+      const rects = [], open = new Map();
+      for (let y = 0; y < N; y++) {
+        const next = new Map();
+        let x = 0;
+        while (x < N) {
+          if (map.grid[y * N + x] !== cls) { x++; continue; }
+          let e = x; while (e < N && map.grid[y * N + e] === cls) e++;
+          const k = x + ',' + e, r = open.get(k);
+          if (r) { r.y1 = y + 1; next.set(k, r); } else { const nr = { x0: x, x1: e, y0: y, y1: y + 1 }; rects.push(nr); next.set(k, nr); }
+          x = e;
+        }
+        open.clear(); for (const [k, v] of next) open.set(k, v);
+      }
+      return rects;
+    }
+
+    // The felt you build on is a raised plateau; its top samples the board texture by
+    // world position so the pattern lines up with the lanes below.
+    buildFelt(boardTex) {
+      const map = this.game.map, cell = map.cell, size = map.size * cell, org = map.origin;
+      const rects = this.rectsOf(0);
+      const m = new T.MeshStandardMaterial({ map: boardTex, roughness: 0.95, metalness: 0 });
+      m.onBeforeCompile = (sh) => {
+        sh.vertexShader = 'varying float vSide;\n' + sh.vertexShader.replace('#include <uv_vertex>', `#include <uv_vertex>
+          { vec4 wp = modelMatrix * instanceMatrix * vec4(position, 1.0);
+            vMapUv = vec2((wp.x - (${org.toFixed(1)})) / ${size.toFixed(1)}, (-wp.z - (${org.toFixed(1)})) / ${size.toFixed(1)});
+            vSide = 1.0 - step(0.5, abs(normal.y)); }`);
+        // the plateau's sides are plain dark felt rather than a stretched copy of the edge pixels
+        sh.fragmentShader = 'varying float vSide;\n' + sh.fragmentShader.replace('#include <map_fragment>',
+          '#include <map_fragment>\n diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.035, 0.16, 0.085), vSide);');
+      };
+      const mesh = new T.InstancedMesh(new T.BoxGeometry(1, 1, 1), m, rects.length);
+      const d = new T.Object3D();
+      rects.forEach((r, i) => {
+        const w = (r.x1 - r.x0) * cell, h = (r.y1 - r.y0) * cell;
+        d.position.copy(W2T(org + r.x0 * cell + w / 2, org + r.y0 * cell + h / 2, FELT_H / 2));
+        d.scale.set(w, FELT_H, h); d.updateMatrix(); mesh.setMatrixAt(i, d.matrix);
+      });
+      mesh.castShadow = mesh.receiveShadow = true;
+      this.scene.add(mesh);
     }
 
     // Walls (unwalkable cells) become raised mahogany blocks, merged into row runs.
@@ -297,7 +344,7 @@ window.PTD = window.PTD || {};
         const edge = r.x0 === 0 || r.y0 === 0 || r.x1 === N || r.y1 === N;
         return !(Math.abs(cx) < 700 && Math.abs(cy) < 700) && !(edge && (r.x1 - r.x0 > 300 || r.y1 - r.y0 > 300));
       });
-      const H = 95;
+      const H = 150;
       const body = new T.InstancedMesh(new T.BoxGeometry(1, 1, 1), std('#3a1c12', { roughness: 0.32, metalness: 0.15 }), keep.length);
       const cap = new T.InstancedMesh(new T.BoxGeometry(1, 1, 1), std('#2a130c', { roughness: 0.25, metalness: 0.2 }), keep.length);
       const d = new T.Object3D();
@@ -402,7 +449,7 @@ window.PTD = window.PTD || {};
     // ------------------------------------------------ towers
     makeTower(t) {
       const grp = new T.Group();
-      grp.position.copy(W2T(t.x, t.y, 0));
+      grp.position.copy(W2T(t.x, t.y, FELT_H));
       grp.userData.size = 1.45;   // models read better a bit larger than the 128-unit footprint
       const owner = this.game.players[t.owner];
       const ring = new T.Mesh(geo('ownRing', () => new T.RingGeometry(58, 70, 40)), glowMat(owner.color, 2.2));
@@ -524,45 +571,12 @@ window.PTD = window.PTD || {};
 
     // ------------------------------------------------ looters
     makeLooter(c) {
-      const look = c.def.look || ['#888888', '#ffffff', ''];
-      const [bodyC, accC, kind] = look;
       const R = c.radius;
       const root = new T.Group();
-      const rig = new T.Group(); rig.scale.setScalar(R * 1.45); root.add(rig);
-      const sph = geo('sph', () => new T.SphereGeometry(1, 22, 16));
-      const bodyM = std(bodyC, { roughness: 0.55 }).clone();   // own copy so hit flashes stay per-looter
-      const accM = std(accC, { roughness: 0.5 });
-      const darkM = std(PTD.Art.shade(bodyC, -0.35));
-      const body = new T.Mesh(sph, bodyM); body.scale.set(0.78, 0.9, 0.72); body.position.y = 1.0; body.castShadow = true; rig.add(body);
-      const belly = new T.Mesh(sph, std(PTD.Art.shade(bodyC, 0.35))); belly.scale.set(0.48, 0.5, 0.3); belly.position.set(0, 0.8, 0.48); rig.add(belly);
-      for (const s of [-1, 1]) {
-        const eye = new T.Mesh(sph, std('#ffffff', { roughness: 0.2 })); eye.scale.setScalar(0.17); eye.position.set(s * 0.25, 1.3, 0.6); rig.add(eye);
-        const pup = new T.Mesh(sph, std('#111111', { roughness: 0.2 })); pup.scale.setScalar(0.085); pup.position.set(s * 0.25, 1.3, 0.75); rig.add(pup);
-      }
-      const feet = [];
-      for (const s of [-1, 1]) { const f = new T.Mesh(sph, darkM); f.scale.set(0.24, 0.13, 0.32); f.position.set(s * 0.35, 0.12, 0.05); f.castShadow = true; rig.add(f); feet.push(f); }
-      const sack = new T.Mesh(sph, std('#c8a46a', { roughness: 0.8 })); sack.scale.setScalar(0.5); sack.position.set(0, 1.05, -0.72); sack.castShadow = true; rig.add(sack);
-      const knot = new T.Mesh(sph, std('#7a5a2c')); knot.scale.setScalar(0.15); knot.position.set(0, 1.55, -0.72); rig.add(knot);
-      const add = (g, m, s, p, r) => { const o = new T.Mesh(g, m); o.scale.set(s[0], s[1], s[2]); o.position.set(p[0], p[1], p[2]); if (r) o.rotation.set(r[0], r[1], r[2]); o.castShadow = true; rig.add(o); return o; };
-      const cone = geo('cone', () => new T.ConeGeometry(1, 1, 12));
-      const cyl = geo('cyl', () => new T.CylinderGeometry(1, 1, 1, 18));
-      switch (kind) {
-        case 'ears': for (const s of [-1, 1]) { add(sph, bodyM, [0.22, 0.3, 0.1], [s * 0.45, 1.85, 0], [0, 0, -s * 0.3]); add(sph, accM, [0.12, 0.18, 0.05], [s * 0.45, 1.85, 0.06], [0, 0, -s * 0.3]); } break;
-        case 'mask': add(cyl, accM, [0.8, 0.22, 0.75], [0, 1.3, 0]); break;
-        case 'hat': add(cyl, accM, [0.95, 0.06, 0.95], [0, 1.78, 0]); add(cyl, accM, [0.5, 0.55, 0.5], [0, 2.05, 0]); break;
-        case 'hood': add(sph, accM, [0.84, 0.75, 0.8], [0, 1.25, -0.08]); break;
-        case 'helm': add(sph, accM, [0.8, 0.55, 0.76], [0, 1.45, 0]); add(cone, accM, [0.1, 0.4, 0.1], [0, 2.05, 0]); break;
-        case 'horns': for (const s of [-1, 1]) add(cone, accM, [0.13, 0.5, 0.13], [s * 0.4, 1.95, 0], [0, 0, -s * 0.5]); break;
-        case 'fin': add(cone, darkM, [0.08, 0.6, 0.35], [0, 1.95, -0.1]); break;
-        case 'claws': for (const s of [-1, 1]) add(sph, accM, [0.28, 0.22, 0.28], [s * 0.95, 1.0, 0.3]); break;
-        case 'sock': add(cyl, accM, [0.32, 0.5, 0.32], [0, 2.0, 0], [0.3, 0, 0]); break;
-        case 'fangs': for (const s of [-1, 1]) add(cone, std('#ffffff'), [0.06, 0.2, 0.06], [s * 0.12, 0.98, 0.68], [Math.PI, 0, 0]); break;
-        case 'gear': { const gr = add(geo('torus', () => new T.TorusGeometry(1, 0.35, 8, 10)), accM, [0.25, 0.25, 0.25], [0, 2.05, 0]); gr.userData.spin = true; break; }
-        case 'shell': add(sph, accM, [0.3, 0.28, 0.3], [0, 1.95, 0]); break;
-        case 'wings': for (const s of [-1, 1]) add(sph, std(accC, { transparent: true, opacity: 0.85 }), [0.65, 0.12, 0.38], [s * 0.75, 1.4, -0.3], [0, 0, s * 0.5]); break;
-      }
+      const ch = PTD.Looters3D.build(c.def);
+      const holder = new T.Group(); holder.scale.setScalar(R * 1.25); holder.add(ch.rig); root.add(holder);
       this.addHealthBar(root, R * 3.6, 100);
-      root.userData = { rig, body, bodyM, feet, lastHp: c.hp, hitT: 0 };
+      root.userData = { rig: holder, anim: ch.anim, flash: ch.flash, detail: ch.detail, lastHp: c.hp, hitT: 0 };
       this.scene.add(root);
       return root;
     }
@@ -595,7 +609,9 @@ window.PTD = window.PTD || {};
       aura.rotation.x = -Math.PI / 2; aura.position.y = 0.03; rig.add(aura);
       const light = new T.PointLight(0xffc040, 0.8, 900, 0); light.position.set(0, 260, 220); root.add(light);
       this.addHealthBar(root, R * 4.1, 240);
-      root.userData = { rig, body: torso, bodyM: suitM, feet, headG, face, faceMat, boss: b, aura, lastHp: c.hp, hitT: 0, faceReady: false };
+      root.userData = { rig, flash: [suitM], feet, headG, face, faceMat, boss: b, aura, lastHp: c.hp, hitT: 0, faceReady: false,
+        anim: (t, moving) => { const ph = t * 9; feet[0].position.z = moving ? Math.sin(ph) * 0.25 : 0.05; feet[1].position.z = moving ? -Math.sin(ph) * 0.25 : 0.05;
+          rig.position.y = moving ? Math.abs(Math.sin(ph)) * R * 0.1 : 0; rig.rotation.z = moving ? Math.sin(ph) * 0.05 : 0; } };
       this.scene.add(root);
       return root;
     }
@@ -638,16 +654,13 @@ window.PTD = window.PTD || {};
         let d = (want - ud.rig.rotation.y + Math.PI * 3) % TAU - Math.PI;
         ud.rig.rotation.y += d * Math.min(1, dt * 10);
         const moving = !(c.wait > 0) && !(c.stunT > 0);
-        const ph = t * 10 + c.phaseOff;
-        ud.rig.position.y = moving ? Math.abs(Math.sin(ph)) * c.radius * 0.12 : 0;
-        ud.rig.rotation.z = moving ? Math.sin(ph) * 0.06 : 0;
-        ud.feet[0].position.z = moving ? Math.sin(ph) * 0.25 : 0.05;
-        ud.feet[1].position.z = moving ? -Math.sin(ph) * 0.25 : 0.05;
+        ud.anim(t + c.phaseOff, moving, dt);
         if (c.hp < ud.lastHp - 0.5) ud.hitT = 0.12;
         ud.lastHp = c.hp;
         ud.hitT = Math.max(0, ud.hitT - dt);
-        ud.bodyM.emissive.setRGB(ud.hitT > 0 ? 0.9 : c.slowF < 1 ? 0.05 : 0, ud.hitT > 0 ? 0.9 : c.slowF < 1 ? 0.18 : 0, ud.hitT > 0 ? 0.9 : c.slowF < 1 ? 0.45 : 0);
-        ud.rig.children.forEach(ch => { if (ch.userData.spin) ch.rotation.y += dt * 4; });
+        const fr = ud.hitT > 0 ? 0.9 : c.slowF < 1 ? 0.05 : 0, fg = ud.hitT > 0 ? 0.9 : c.slowF < 1 ? 0.18 : 0, fb = ud.hitT > 0 ? 0.9 : c.slowF < 1 ? 0.45 : 0;
+        for (const m of ud.flash) m.emissive.setRGB(fr, fg, fb);
+        if (ud.detail) { const show = this.view.zoom > 0.085; if (ud.detailOn !== show) { ud.detailOn = show; for (const d of ud.detail) d.visible = show; } }
         if (ud.headG) {
           this.applyBossFace(ud);
           const camYaw = Math.atan2(this.camera.position.x - o.position.x, this.camera.position.z - o.position.z);
@@ -684,7 +697,7 @@ window.PTD = window.PTD || {};
         if (!o) {
           o = this.glowSprite(col, size); this.scene.add(o); this.shotObjs.set(sh, o);
           o.userData.trail = [];
-          if (sh.fx !== 'mortar') this.burst(W2T(sh.x, sh.y, 110), col, 3, 120, 0.18);
+          if (sh.fx !== 'mortar') this.burst(W2T(sh.x, sh.y, 110 + FELT_H), col, 3, 120, 0.18);
         }
         let h = 95;
         if (sh.arc) {
@@ -830,11 +843,11 @@ window.PTD = window.PTD || {};
     placeCamera(v) {
       const z = this.clampZoom(v.zoom);
       const n = (Math.log(z) - Math.log(0.04)) / (Math.log(0.9) - Math.log(0.04));   // 0 far .. 1 close
-      const pitch = (62 - n * 26) * Math.PI / 180;     // closer = lower, more cinematic angle
+      const pitch = Math.max(14, Math.min(85, 62 - n * 26 + (v.tilt || 0))) * Math.PI / 180;   // closer = lower, more cinematic
       const dist = this.distFor(z);
-      const tx = v.x, tz = -v.y;
-      const sh = this.shake;
-      this.camera.position.set(tx + (Math.random() - 0.5) * sh, Math.sin(pitch) * dist + (Math.random() - 0.5) * sh, tz + Math.cos(pitch) * dist);
+      const tx = v.x, tz = -v.y, yaw = v.yaw || 0;
+      const sh = this.shake, flat = Math.cos(pitch) * dist;
+      this.camera.position.set(tx + Math.sin(yaw) * flat + (Math.random() - 0.5) * sh, Math.sin(pitch) * dist + (Math.random() - 0.5) * sh, tz + Math.cos(yaw) * flat);
       this.camera.lookAt(tx, 0, tz);
       // keep the shadow box around what we're looking at
       const span = Math.min(6500, dist * 0.9 + 600);
@@ -852,6 +865,7 @@ window.PTD = window.PTD || {};
       this.cam.zoom = this.clampZoom(z);
       this.cam.x = (minX + maxX) / 2 + 100 / this.cam.zoom;
       this.cam.y = (minY + maxY) / 2 - 200;
+      this.cam.yaw = 0; this.cam.tilt = 0;
       if (!this.view.init) { Object.assign(this.view, this.cam); this.view.init = true; }
     }
 
@@ -864,6 +878,28 @@ window.PTD = window.PTD || {};
       this.cam.x += before.x - after.x; this.cam.y += before.y - after.y;
       this.view.x = this.cam.x; this.view.y = this.cam.y;
     }
+
+    // Pan by screen pixels, respecting the camera's rotation.
+    panBy(dx, dy) {
+      const z = this.cam.zoom, c = Math.cos(this.cam.yaw), s = Math.sin(this.cam.yaw);
+      this.cam.x += (-c * dx - s * dy) / z;
+      this.cam.y += (-s * dx + c * dy) / z;
+    }
+
+    rotateBy(dYaw, dTilt) {
+      this.cam.yaw += dYaw;
+      this.cam.tilt = Math.max(-30, Math.min(22, (this.cam.tilt || 0) + (dTilt || 0)));
+    }
+
+    // Opening shot: circle high over the casino, then swoop down to the player's lane.
+    playIntro(p) {
+      this.fitPlayer(p);
+      const end = Object.assign({}, this.cam);
+      this.cine = { t: 0, dur: 5.2, intro: true, end, start: { x: 0, y: 0, zoom: 0.05, yaw: end.yaw - Math.PI * 1.1, tilt: -18 } };
+      Object.assign(this.view, this.cine.start);
+    }
+
+    skipIntro() { if (this.cine && this.cine.intro) this.cine.t = this.cine.dur; }
 
     screenToWorld(sx, sy) {
       const ndc = new T.Vector2((sx / this.W) * 2 - 1, -(sy / this.H) * 2 + 1);
@@ -897,7 +933,8 @@ window.PTD = window.PTD || {};
       const me = this.game.human;
       if (type === 'waveStart' && d.bosses && me && me.alive) {
         const s = me.lane.path[0];
-        this.cine = { t: 0, dur: 3.2, back: { x: this.cam.x, y: this.cam.y, zoom: this.cam.zoom }, to: { x: s.x + 300, y: s.y - 500, zoom: 0.5 } };
+        const back = { x: this.cam.x, y: this.cam.y, zoom: this.cam.zoom, yaw: this.cam.yaw, tilt: this.cam.tilt };
+        this.cine = { t: 0, dur: 3.2, back, to: { x: s.x + 300, y: s.y - 500, zoom: 0.5, yaw: this.cam.yaw, tilt: -8 } };
       } else if (type === 'leak' && d.player === me) { this.flash = 0.55; this.shake = Math.max(this.shake, 60); }
       else if (type === 'kill' && d.boss) { this.shake = Math.max(this.shake, 110); }
       else if (type === 'towerDestroyed' && d.tower && d.tower.owner === me.id) { this.shake = Math.max(this.shake, 120); this.flash = 0.35; }
@@ -921,18 +958,27 @@ window.PTD = window.PTD || {};
       const g = this.game;
 
       // camera: smooth follow, optional boss cinematic
+      const mix = (a, b, e) => ({ x: a.x + (b.x - a.x) * e, y: a.y + (b.y - a.y) * e, yaw: (a.yaw || 0) + ((b.yaw || 0) - (a.yaw || 0)) * e,
+        tilt: (a.tilt || 0) + ((b.tilt || 0) - (a.tilt || 0)) * e, zoom: Math.exp(Math.log(a.zoom) + (Math.log(b.zoom) - Math.log(a.zoom)) * e) });
+      const smooth = (s) => s * s * (3 - 2 * s);
       if (this.cine) {
         const c = this.cine; c.t += dt;
-        const k = c.t < 1 ? c.t : c.t > c.dur - 1 ? Math.max(0, c.dur - c.t) : 1;
-        const e = k * k * (3 - 2 * k);
-        const to = c.to, bk = c.back;
-        this.view.x = bk.x + (to.x - bk.x) * e; this.view.y = bk.y + (to.y - bk.y) * e;
-        this.view.zoom = Math.exp(Math.log(bk.zoom) + (Math.log(to.zoom) - Math.log(bk.zoom)) * e);
-        if (c.t >= c.dur) this.cine = null;
+        if (c.intro) {
+          // orbit for the first 45%, then ease down into the lane view
+          const k = Math.min(1, c.t / c.dur);
+          const orbitEnd = Object.assign({}, c.start, { yaw: c.end.yaw - 0.35, zoom: 0.065, tilt: -10 });
+          Object.assign(this.view, k < 0.45 ? mix(c.start, orbitEnd, k / 0.45) : mix(orbitEnd, c.end, smooth((k - 0.45) / 0.55)));
+        } else {
+          const k = c.t < 1 ? c.t : c.t > c.dur - 1 ? Math.max(0, c.dur - c.t) : 1;
+          Object.assign(this.view, mix(c.back, c.to, smooth(k)));
+        }
+        if (c.t >= c.dur) { if (c.intro) Object.assign(this.view, this.cam); this.cine = null; }
       } else {
         const f = Math.min(1, dt * 12);
         this.view.x += (this.cam.x - this.view.x) * f; this.view.y += (this.cam.y - this.view.y) * f;
         this.view.zoom = Math.exp(Math.log(this.view.zoom) + (Math.log(this.cam.zoom) - Math.log(this.view.zoom)) * f);
+        this.view.yaw += (this.cam.yaw - this.view.yaw) * f;
+        this.view.tilt += ((this.cam.tilt || 0) - (this.view.tilt || 0)) * f;
       }
       this.shake *= Math.pow(0.02, dt);
       this.flash = Math.max(0, this.flash - dt * 1.4);
@@ -960,15 +1006,15 @@ window.PTD = window.PTD || {};
       const gh = ui && ui.ghost;
       this.ghost.visible = !!gh;
       if (gh) {
-        this.ghost.position.copy(W2T(gh.x, gh.y, 4));
+        this.ghost.position.copy(W2T(gh.x, gh.y, FELT_H + 4));
         this.ghost.material.color.set(gh.ok ? '#66ff99' : '#ff5555');
       }
       const focus = ui && (ui.inspect && ui.inspect.alive ? ui.inspect : ui.hoverTower);
       const rr = focus ? { x: focus.x, y: focus.y, r: focus.stats.range } : gh && gh.ok ? { x: gh.x, y: gh.y, r: 400 } : null;
       this.rangeRing.visible = this.rangeFill.visible = !!rr;
       if (rr) {
-        this.rangeRing.position.copy(W2T(rr.x, rr.y, 8)); this.rangeRing.scale.setScalar(rr.r);
-        this.rangeFill.position.copy(W2T(rr.x, rr.y, 7)); this.rangeFill.scale.setScalar(rr.r);
+        this.rangeRing.position.copy(W2T(rr.x, rr.y, FELT_H + 8)); this.rangeRing.scale.setScalar(rr.r);
+        this.rangeFill.position.copy(W2T(rr.x, rr.y, FELT_H + 7)); this.rangeFill.scale.setScalar(rr.r);
       }
 
       this.post.comp.uniforms.flash.value = this.flash;

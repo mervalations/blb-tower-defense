@@ -78,6 +78,8 @@
     document.body.classList.toggle('online-client', net instanceof PTD.Net.Client);
     if (start) game.start();
     lastHandSig = '';
+    A.music.setMood('lounge');
+    if (renderer.playIntro) { renderer.playIntro(game.human); banner('BLB Tower Defense', 'Click to skip the fly-in', 3800); }
   }
 
   // ---------- events from the simulation ----------
@@ -86,6 +88,7 @@
     if (renderer && renderer.event && game) renderer.event(type, d);
     switch (type) {
       case 'handStart':
+        A.music.setMood('lounge');
         ui.winners = new Set();
         A.play('hand');
         break;
@@ -109,6 +112,7 @@
         break;
       }
       case 'waveStart': {
+        A.music.setMood(d.bosses ? 'boss' : 'action');
         if (d.bosses) {
           const faces = d.bosses.map(b => b.image ? '<img class="boss-face" src="' + b.image + '" alt="">' : '').join(' ');
           const hp = Math.round(game.creepHp(d.def) * (d.def.hpEach || 1));
@@ -126,7 +130,7 @@
       case 'defeat': if (d.player !== me) toast(d.player.name + ' went broke!'); break;
       case 'bossAttack': if (d.creep.owner === me.id && performance.now() > ui.shellWarned) { ui.shellWarned = performance.now() + 8000; toast(PTD.BOSSES[d.creep.bossIdx].name + ' is shelling your towers!', true); } break;
       case 'towerDestroyed': if (d.tower.owner === me.id) A.play('boom'); break;
-      case 'gameOver': setTimeout(() => showOver(d), 900); break;
+      case 'gameOver': A.music.setMood('lounge'); setTimeout(() => showOver(d), 900); break;
       case 'shot': if (d.tower.owner === me.id) A.play('shot', d.fx); break;
     }
   }
@@ -343,7 +347,15 @@
   }
   $('btn-speed').onclick = () => { ui.speed = ui.speed === 3 ? 1 : ui.speed + 1; $('btn-speed').textContent = ui.speed + 'x'; };
   $('btn-pause').onclick = () => { ui.paused = !ui.paused; };
-  $('btn-mute').onclick = () => { const m = A.toggle(); $('btn-mute').style.opacity = m ? 0.4 : 1; };
+  function showSound(st) {
+    const b = $('btn-mute');
+    b.style.opacity = st === 'off' ? 0.4 : 1;
+    b.innerHTML = st === 'all' ? '&#9835;' : st === 'sfx' ? '&#128264;' : '&#128263;';
+    b.title = { all: 'Music and sound on (M)', sfx: 'Sound effects only (M)', off: 'Muted (M)' }[st];
+  }
+  $('btn-mute').onclick = () => { A.unlock(); const st = A.cycle(); settings.sound = st; saveSettings(); showSound(st); };
+  if (settings.sound) A.setState(settings.sound);
+  showSound(A.state);
   $('btn-center').onclick = () => { if (game) renderer.fitPlayer(game.human); };
 
   // ---------- pointer ----------
@@ -352,14 +364,21 @@
   canvas.addEventListener('pointerdown', e => {
     A.unlock();
     drag.down = true; drag.button = e.button; drag.sx = e.clientX; drag.sy = e.clientY; drag.moved = false;
-    drag.camX = renderer.cam.x; drag.camY = renderer.cam.y;
+    drag.camX = renderer.cam.x; drag.camY = renderer.cam.y; drag.lx = e.clientX; drag.ly = e.clientY;
+    if (renderer.skipIntro) renderer.skipIntro();
     canvas.setPointerCapture(e.pointerId);
   });
   canvas.addEventListener('pointermove', e => {
     if (drag.down) {
       const dx = e.clientX - drag.sx, dy = e.clientY - drag.sy;
       if (!drag.moved && Math.hypot(dx, dy) > 6) drag.moved = true;
-      if (drag.moved) { renderer.cam.x = drag.camX - dx / renderer.cam.zoom; renderer.cam.y = drag.camY + dy / renderer.cam.zoom; }
+      if (drag.moved) {
+        const mx = e.clientX - drag.lx, my = e.clientY - drag.ly;
+        if (drag.button === 2 && renderer.rotateBy) renderer.rotateBy(mx * 0.006, -my * 0.12);
+        else if (renderer.panBy) renderer.panBy(mx, my);
+        else { renderer.cam.x = drag.camX - dx / renderer.cam.zoom; renderer.cam.y = drag.camY + dy / renderer.cam.zoom; }
+      }
+      drag.lx = e.clientX; drag.ly = e.clientY;
     }
     hover(e.clientX, e.clientY);
   });
@@ -406,6 +425,7 @@
     ui.keys[e.key.toLowerCase()] = true;
     if (!game) return;
     const k = e.key.toLowerCase();
+    if (renderer.skipIntro) renderer.skipIntro();
     if (k === ' ') { e.preventDefault(); act('ready'); }
     else if (k === 'r') act('swap');
     else if (k === 'c') act('combine');
@@ -631,7 +651,15 @@
     const g = game || demo;
     if (g) {
       const pan = 900 * dt / Math.max(0.3, renderer.cam.zoom * 4);
-      if (game) {
+      if (game && renderer.panBy) {
+        const px = 900 * dt;
+        if (ui.keys['a'] || ui.keys['arrowleft']) renderer.panBy(px, 0);
+        if (ui.keys['d'] || ui.keys['arrowright']) renderer.panBy(-px, 0);
+        if (ui.keys['w'] || ui.keys['arrowup']) renderer.panBy(0, px);
+        if (ui.keys['s'] || ui.keys['arrowdown']) renderer.panBy(0, -px);
+        if (ui.keys['q']) renderer.rotateBy(dt * 1.4, 0);
+        if (ui.keys['e']) renderer.rotateBy(-dt * 1.4, 0);
+      } else if (game) {
         if (ui.keys['a'] || ui.keys['arrowleft']) renderer.cam.x -= pan;
         if (ui.keys['d'] || ui.keys['arrowright']) renderer.cam.x += pan;
         if (ui.keys['w'] || ui.keys['arrowup']) renderer.cam.y += pan;
@@ -639,6 +667,7 @@
       } else {
         const t = now / 1000;
         renderer.cam.x = Math.sin(t * 0.05) * 2600; renderer.cam.y = Math.cos(t * 0.037) * 2600;
+        if (renderer.rotateBy) renderer.cam.yaw = t * 0.06;   // slow orbit behind the menu
       }
       renderer.draw(game ? ui : {});
       if (game) updateHud();
