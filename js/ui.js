@@ -94,8 +94,7 @@
       case 'handStart':
         A.music.setMood('lounge');
         ui.winners = new Set();
-        // fast-forward only lasts for the fight: every new hand starts back at 1x so there's time to build
-        if (ui.speed !== 1) { ui.speed = 1; $('btn-speed').textContent = '1x'; toast('Speed back to 1x for the hand'); }
+        resetSpeed();   // safety net: a hand never starts fast-forwarded (e.g. after everyone folded)
         if (d.ante && me && me.alive) { toast('The table pays an ante: +' + d.ante + ' gold'); A.play('coin'); }
         A.play('hand');
         break;
@@ -134,6 +133,7 @@
       }
       case 'allFolded': toast('Everyone folded. No looters this round.'); break;
       case 'waveCleared':
+        resetSpeed();   // the round is over: drop back to 1x so the next hand isn't rushed
         if (me && me.alive) { banner('Wave cleared!', 'Level ' + game.level + ' done &middot; the stash is safe', 1500, false, 'cleared'); A.play('cleared'); }
         break;
       case 'kill':
@@ -156,6 +156,13 @@
   let bannerTimer = 0;
   document.addEventListener('click', (e) => { if (e.target.closest && e.target.closest('button')) A.play('click'); }, true);
   document.addEventListener('mouseover', (e) => { const b = e.target.closest && e.target.closest('button'); if (b && !b.disabled && b !== ui.hoverBtn) { ui.hoverBtn = b; A.play('hover'); } else if (!b) ui.hoverBtn = null; });
+
+  // Fast-forward only lasts for the fight.
+  function resetSpeed() {
+    if (ui.speed === 1) return;
+    ui.speed = 1; $('btn-speed').textContent = '1x';
+    toast('Round over: speed back to 1x');
+  }
 
   function banner(title, sub, ms, boss, kind) {
     const b = $('banner');
