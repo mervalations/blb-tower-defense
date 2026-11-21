@@ -200,10 +200,10 @@ PTD.Audio = (function () {
   // (missing files, blocked autoplay), the generated Synth band plays instead.
   // Tracks in assets/music/local/ are git-ignored: they play when you run the game from
   // your own folder but are never uploaded to the public site.
-  const PUBLIC_TRACKS = ['assets/music/td2.mp3'];
-  const LOCAL_TRACKS = ['assets/music/local/td.mp3', 'assets/music/local/td3.m4a', 'assets/music/local/td4.m4a',
-    'assets/music/local/td5.m4a', 'assets/music/local/td6.m4a', 'assets/music/local/td7.m4a'];
-  const TRACKS = location.protocol === 'file:' ? [LOCAL_TRACKS[0]].concat(PUBLIC_TRACKS, LOCAL_TRACKS.slice(1)) : PUBLIC_TRACKS;
+  const PUBLIC_TRACKS = ['assets/music/td2.mp3', 'assets/music/td3.m4a', 'assets/music/td4.m4a',
+    'assets/music/td5.m4a', 'assets/music/td6.m4a', 'assets/music/td7.m4a'];
+  const LOCAL_TRACKS = ['assets/music/local/td.mp3'];
+  const TRACKS = location.protocol === 'file:' ? LOCAL_TRACKS.concat(PUBLIC_TRACKS) : PUBLIC_TRACKS;
   const Music = (function () {
     let el = null, idx = 0, on = true, failed = false, playing = false;
     function load() {

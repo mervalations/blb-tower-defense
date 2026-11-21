@@ -13,7 +13,7 @@ Pick on the menu: **3D Ultra** (lighting, shadows, bloom glow, particles), **3D 
 Ultra drops to Fast automatically if the frame rate struggles. The 3D view uses Three.js r158 (bundled in `js/lib/`, MIT licence).
 
 ## Music and controls
-- Soundtrack: `assets/music/td2.mp3` online. When run from your own folder it also plays the tracks in `assets/music/local/` (git-ignored, never uploaded). The sound button (or M) cycles music+sound / sound only / muted. If no track loads, a generated lounge-jazz band plays instead.
+- Soundtrack: `assets/music/` (td2–td7, the owner's Suno tracks) online. When run from your own folder it also plays the tracks in `assets/music/local/` (git-ignored, never uploaded). The sound button (or M) cycles music+sound / sound only / muted. If no track loads, a generated lounge-jazz band plays instead.
 - Boss voice lines: `assets/sfx/`, set per boss in `js/bosses.js` (`intro`, `defeat`) plus `PTD.BOSS_ATTACK_SFX`. Convert a video's audio with `python tools/mp4-audio.py in.mp4 out.m4a`.
 - Camera: drag or WASD to pan, wheel to zoom, right-drag or Q/E to rotate and tilt, H to return to your lane. A fly-in intro plays at the start of each game (click to skip).
 
