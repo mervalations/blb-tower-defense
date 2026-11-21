@@ -94,6 +94,8 @@
       case 'handStart':
         A.music.setMood('lounge');
         ui.winners = new Set();
+        // fast-forward only lasts for the fight: every new hand starts back at 1x so there's time to build
+        if (ui.speed !== 1) { ui.speed = 1; $('btn-speed').textContent = '1x'; toast('Speed back to 1x for the hand'); }
         if (d.ante && me && me.alive) { toast('The table pays an ante: +' + d.ante + ' gold'); A.play('coin'); }
         A.play('hand');
         break;
