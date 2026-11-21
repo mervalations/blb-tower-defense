@@ -224,10 +224,11 @@
     const holding = best ? ' You\'re holding <b>' + best.combo.title + '</b>.' : '';
     if (!p.swapped) {
       const n = g.selected(p).length;
+      // reminder: an uncombined hand keeps only its highest card
       if (n) return 'Press <b>Swap</b> to replace ' + Math.min(4, n) + ' card' + (n > 1 ? 's' : '') + ', or select a poker hand.' + holding;
       return 'Select up to 4 cards to <b>Swap</b>, or select a poker hand to <b>Combine</b> (click cards, or press 1-5).' + holding;
     }
-    return best ? 'Select your <b>' + best.combo.title + '</b> and press <b>Combine</b>.' : 'No poker hand this time. Your highest card counts. Press <b>Ready</b>.';
+    return best ? 'Select your <b>' + best.combo.title + '</b> and press <b>Combine</b>.' : 'No poker hand this time. Only your highest card will stay as a tower. Press <b>Ready</b>.';
   }
 
   function updateLeaderboard() {

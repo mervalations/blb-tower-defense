@@ -18,7 +18,10 @@ PTD.RULES = {
 };
 
 // HP curve for the solo modes (see Game.creepHp). Tuned with tools/sim.js; PTD_CURVE overrides it there.
-const CURVE = +(typeof process !== 'undefined' && process.env && process.env.PTD_CURVE) || 0.63;
+const CURVE = +(typeof process !== 'undefined' && process.env && process.env.PTD_CURVE) || 0.6;
+// Looter health multiplier for levels 1-5 in the solo modes (Classic keeps the original).
+PTD.EARLY_EASE = [0.3, 0.45, 0.6, 0.75, 0.9];
+
 PTD.MODES = [
   { key: 'amateur', name: 'Amateur', hpMult: 0.75, curve: CURVE, bonusMult: 1, desc: 'Weaker looters. Learn the ropes.' },
   { key: 'pro', name: 'Professional', hpMult: 1.0, curve: CURVE, bonusMult: 1, desc: 'The intended solo challenge.' },

@@ -170,9 +170,12 @@ PTD.Game = class {
       if (p.folded) { p.handTitle = 'Folded'; continue; }
       if (!p.combined) {
         let hi = null;
-        for (const t of p.hand) if (!hi || t.rank > hi.rank) hi = t;
+        for (const t of p.hand) if (t.alive && (!hi || t.rank > hi.rank)) hi = t;
         p.rating = hi ? hi.rank : 0;
         p.handTitle = hi ? 'High card: ' + PTD.RANK_NAME[hi.rank] : 'No cards';
+        // No combination: only the highest card stays on the board as a tower.
+        for (const t of p.hand) if (t.alive && t !== hi) this.removeTower(t);
+        p.hand = hi ? [hi] : [];
       }
       contenders.push(p);
       top = Math.max(top, p.rating);
@@ -182,6 +185,7 @@ PTD.Game = class {
     for (const w of winners) { w.gold += bonus; w.handWins++; w.earned += bonus; }
     this.emit('handResult', { winners, bonus, title: winners.length ? winners[0].handTitle : '' });
     for (const t of this.towers) t.selected = false;
+    this.towers = this.towers.filter(t => t.alive);
     this.startSpawn();
   }
 
@@ -222,7 +226,10 @@ PTD.Game = class {
   creepHp(def) {
     const m = this.mode;
     const base = m.curve ? 150 * Math.pow(def.hp / 150, m.curve) : def.hp;
-    return Math.round(base * m.hpMult);
+    // An uncombined hand leaves a single tower, so the first waves ease in while you build up.
+    const lvl = PTD.LEVELS.indexOf(def);
+    const ease = m.curve && lvl >= 0 && lvl < PTD.EARLY_EASE.length ? PTD.EARLY_EASE[lvl] : 1;
+    return Math.max(1, Math.round(base * m.hpMult * ease));
   }
 
   finish() {
