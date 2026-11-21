@@ -117,8 +117,8 @@ PTD.Net = (function () {
     apply(p, m) {
       const g = this.game;
       const select = (ids) => {
-        const set = new Set(ids || []);
-        for (const t of p.hand) t.selected = set.has(t.id);
+        const order = new Map((ids || []).map((id, i) => [id, i + 1]));
+        for (const t of p.hand) { t.selected = order.has(t.id); t.selOrder = order.get(t.id) || 0; }
       };
       switch (m.a) {
         case 'deal': g.deal(p, +m.x, +m.y); break;
@@ -269,12 +269,13 @@ PTD.Net = (function () {
       g.update = (dt) => self.clientUpdate(dt);
       g.deal = (p, x, y) => { if (!g.canDealAt(p, x, y)) return null; self.send({ a: 'deal', x, y }); p.dealsLeft--; g.map.setOcc(x, y, 1); return true; };   // optimistic; next tower snapshot is authoritative
       g.tip = (p) => { if (!g.canAct(p) || p.dealsLeft < 5) return { ok: false, msg: 'You can only tip before your first card is dealt.' }; if (p.gold <= PTD.RULES.tipCost) return { ok: false, msg: 'You need more than ' + PTD.RULES.tipCost + ' gold to tip.' }; self.send({ a: 'tip' }); return { ok: true }; };
-      g.requestNew = (p) => { if (!g.canRequest(p)) return false; self.send({ a: 'swap', sel: [...self.sel] }); self.sel.clear(); p.swapped = true; return true; };
+      g.requestNew = (p) => { if (!g.canRequest(p)) return false; self.send({ a: 'swap', sel: g.selected(p).map(t => t.id) }); self.sel.clear(); p.swapped = true; return true; };
       g.combine = (p) => { if (!g.canCombine(p)) return null; const sel = g.selected(p); self.send({ a: 'combine', sel: sel.map(t => t.id), anchor: sel[0].id }); self.sel.clear(); p.combined = true; return true; };
       g.fold = (p) => { if (!g.canFold(p)) return false; self.send({ a: 'fold' }); p.folded = true; return true; };
       g.ready = () => { if (g.phase !== 'hand') return; self.send({ a: 'ready' }); me().ready = true; };
       const baseToggle = g.toggleSelect.bind(g);
-      g.toggleSelect = (p, t) => { const ok = baseToggle(p, t); if (ok) { if (t.selected) self.sel.add(t.id); else self.sel.delete(t.id); } return ok; };
+      self.selOrderOf = new Map();
+      g.toggleSelect = (p, t) => { const ok = baseToggle(p, t); if (ok) { if (t.selected) { self.sel.add(t.id); self.selOrderOf.set(t.id, t.selOrder); } else { self.sel.delete(t.id); self.selOrderOf.delete(t.id); } } return ok; };
       g.towerById = new Map();
       g.creepById = new Map();
       this.hooks.onStart && this.hooks.onStart(g);
@@ -331,6 +332,7 @@ PTD.Net = (function () {
         }
         t.inHand = !!inHand; t.kills = kills; t.dmgDone = dmg; t.fresh = fresh >= 0 ? fresh : null;
         t.selected = this.sel.has(id) && t.inHand && owner === this.seat;
+        t.selOrder = t.selected ? (t.selOrder || this.selOrderOf.get(id) || 0) : 0;
         next.set(id, t);
       }
       for (const [id, t] of g.towerById) if (!next.has(id)) t.alive = false;

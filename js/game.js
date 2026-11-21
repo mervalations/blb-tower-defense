@@ -330,10 +330,14 @@ PTD.Game = class {
   toggleSelect(p, t) {
     if (!this.canAct(p) || !t || t.owner !== p.id || !t.inHand || t.kind !== 'card') return false;
     t.selected = !t.selected;
+    t.selOrder = t.selected ? (this.selSeq = (this.selSeq || 0) + 1) : 0;
     return true;
   }
 
-  selected(p) { return p.hand.filter(t => t.alive && t.selected && t.kind === 'card'); }
+  // Selected hand cards in the order they were clicked; the first one anchors a combine.
+  selected(p) {
+    return p.hand.filter(t => t.alive && t.selected && t.kind === 'card').sort((a, b) => (a.selOrder || 0) - (b.selOrder || 0));
+  }
 
   canRequest(p) {
     const n = this.selected(p).length;
@@ -415,14 +419,14 @@ PTD.Game = class {
     } else if (ai.step === 2) {
       const cards = p.hand.map(t => ({ suit: t.suit, rank: t.rank }));
       const drop = cards.length === 5 ? PTD.Poker.suggestDiscard(cards) : [];
-      if (drop.length) { drop.forEach(i => { p.hand[i].selected = true; }); this.requestNew(p); }
+      if (drop.length) { drop.forEach((i, k) => { p.hand[i].selected = true; p.hand[i].selOrder = k + 1; }); this.requestNew(p); }
       ai.step = 3; ai.t = 0.8;
     } else if (ai.step === 3) {
       const cards = p.hand.map(t => ({ suit: t.suit, rank: t.rank }));
       const b = PTD.Poker.best(cards);
       if (b) {
         let anchor = null, bestScore = -1;
-        for (const i of b.idx) { const t = p.hand[i]; t.selected = true; const sc = this.spotScore(p, t.x, t.y); if (sc > bestScore) { bestScore = sc; anchor = t; } }
+        for (const i of b.idx) { const t = p.hand[i]; t.selected = true; t.selOrder = i + 1; const sc = this.spotScore(p, t.x, t.y); if (sc > bestScore) { bestScore = sc; anchor = t; } }
         this.combine(p, anchor);
       }
       ai.step = 4;
