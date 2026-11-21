@@ -125,7 +125,7 @@
           A.play('boss');
           A.clip(d.bosses[0].intro);
         } else {
-          banner('Level ' + d.level, PTD.RULES.creepsPerLevel + ' x ' + d.def.name + ' incoming', 1600);
+          banner('Level ' + d.level, 'Here come the ' + d.def.name + '!', 1600);
           A.play('wave');
         }
         break;
@@ -180,7 +180,7 @@
     const tags = [];
     if (def.immune) tags.push('spell immune');
     if (def.evasion) tags.push('evasive');
-    return PTD.RULES.creepsPerLevel + ' x ' + def.name + ' · ' + fmt(game.creepHp(def)) + ' HP · leak -' + def.leak + (tags.length ? ' · ' + tags.join(', ') : '');
+    return def.name + ' (' + PTD.RULES.creepsPerLevel + ') · ' + fmt(game.creepHp(def)) + ' HP · leak -' + def.leak + (tags.length ? ' · ' + tags.join(', ') : '');
   }
 
   // While your boss is on the board, its voice line comes back 5 seconds after it last finished.

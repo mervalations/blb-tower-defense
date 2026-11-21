@@ -19,7 +19,7 @@ PTD.RULES = {
   intermission: 2,
   towerFootprint: 128,
   snap: 64,
-  roadWiden: 1,            // paths are drawn 1 grid cell (32 units) wider on each side than the original map
+  roadWiden: 2,            // paths are drawn 2 grid cells (64 units) wider on each side than the original map
 };
 
 // HP curve for the solo modes (see Game.creepHp). Tuned with tools/sim.js; PTD_CURVE overrides it there.
@@ -121,37 +121,38 @@ PTD.towerStats = function (t) {
 
 // Levels: five blocks of five waves, each block ending in a boss (30 levels total).
 // hp / bounty / leak cost are the original values. Looks are original.
-// look: body colour, accent, accessory id (see art.js)
+// theme: which looter crew walks this round (js/crews3d.js); each wave mixes 3 crew members + a leader.
+// look: body colour, accent, accessory id for the 2D view (see art.js)
 PTD.LEVELS = [
-  { name: 'Sneak Mouse', hp: 150, bounty: 1, leak: 1, look: ['#9aa0a6', '#f4a6b8', 'ears'] },
-  { name: 'Alley Rat', hp: 425, bounty: 1, leak: 1, look: ['#7d6b5d', '#f4a6b8', 'ears'] },
-  { name: 'Coin Crab', hp: 800, bounty: 1, leak: 1, look: ['#e0703a', '#ffd166', 'claws'] },
-  { name: 'Sock Goblin', hp: 900, bounty: 1, leak: 1, look: ['#6dbb63', '#f7f7f7', 'sock'] },
-  { name: 'Rag Raccoon', hp: 1000, bounty: 1, leak: 1, look: ['#6b6f78', '#1f2228', 'mask'] },
+  { name: 'Pirate Crew', theme: 'pirates', hp: 150, bounty: 1, leak: 1, look: ['#8b5a2b', '#c0392b', 'hat'] },
+  { name: 'Ninja Clan', theme: 'ninjas', hp: 425, bounty: 1, leak: 1, look: ['#2c3e50', '#e74c3c', 'mask'] },
+  { name: 'Zombie Horde', theme: 'zombies', hp: 800, bounty: 1, leak: 1, look: ['#7fae5a', '#5d4037', 'fangs'] },
+  { name: 'Space Aliens', theme: 'aliens', hp: 900, bounty: 1, leak: 1, look: ['#7ed957', '#9b59b6', 'ears'] },
+  { name: 'Cave Clan', theme: 'cavemen', hp: 1000, bounty: 1, leak: 1, look: ['#c68e6e', '#8d6e63', 'hood'] },
   { boss: 0, hp: 6000, bounty: 10, leak: 5, immune: true, evasion: 0.15 },
-  { name: 'Jackal Pup', hp: 2000, bounty: 2, leak: 5, look: ['#c9944a', '#3b2a1a', 'ears'] },
-  { name: 'Pocket Weasel', hp: 2200, bounty: 2, leak: 5, immune: true, look: ['#a0522d', '#ffe8c2', 'mask'] },
-  { name: 'Brute Twins', hp: 2700, bounty: 2, leak: 5, look: ['#8a6fd1', '#ffd166', 'horns'] },
-  { name: 'Card Shark', hp: 4600, bounty: 2, leak: 5, look: ['#5b8fb9', '#eaf2f8', 'fin'] },
-  { name: 'Iron Knuckle', hp: 5000, bounty: 2, leak: 5, look: ['#7f8c8d', '#d35400', 'helm'] },
+  { name: 'Robot Squad', theme: 'robots', hp: 2000, bounty: 2, leak: 5, look: ['#95a5a6', '#3498db', 'gear'] },
+  { name: 'Wizard Circle', theme: 'wizards', hp: 2200, bounty: 2, leak: 5, immune: true, look: ['#5b3fa0', '#f5d76e', 'hood'] },
+  { name: 'Cowboy Posse', theme: 'cowboys', hp: 2700, bounty: 2, leak: 5, look: ['#a1673f', '#2d2d2d', 'hat'] },
+  { name: 'Mummy Tomb', theme: 'mummies', hp: 4600, bounty: 2, leak: 5, look: ['#e8dcc0', '#c9b98a', 'mask'] },
+  { name: 'Clown Troupe', theme: 'clowns', hp: 5000, bounty: 2, leak: 5, look: ['#e74c3c', '#f1c40f', 'hat'] },
   { boss: 1, hp: 16000, bounty: 20, leak: 20, immune: true },
-  { name: 'Velvet Fox', hp: 3800, bounty: 3, leak: 10, look: ['#d9622b', '#fff3e0', 'ears'] },
-  { name: 'Silk Viper', hp: 6800, bounty: 3, leak: 10, look: ['#2e9e6b', '#f1c40f', 'fangs'] },
-  { name: 'Masked Bandit', hp: 8500, bounty: 3, leak: 10, immune: true, look: ['#34495e', '#111111', 'mask'] },
-  { name: 'Fortune Teller', hp: 8000, bounty: 3, leak: 10, look: ['#8e44ad', '#f5d76e', 'hood'] },
-  { name: 'Gold Moth', hp: 10000, bounty: 3, leak: 10, look: ['#e6b800', '#fff7cc', 'wings'] },
+  { name: 'Viking Raiders', theme: 'vikings', hp: 3800, bounty: 3, leak: 10, look: ['#7f8c8d', '#d4a017', 'horns'] },
+  { name: 'Ghost Gang', theme: 'ghosts', hp: 6800, bounty: 3, leak: 10, look: ['#ecf0f1', '#9fb7d0', 'hood'] },
+  { name: 'Dino Riders', theme: 'dinos', hp: 8500, bounty: 3, leak: 10, immune: true, look: ['#58a55c', '#e67e22', 'fin'] },
+  { name: 'Knight Order', theme: 'knights', hp: 8000, bounty: 3, leak: 10, look: ['#bdc3c7', '#2980b9', 'helm'] },
+  { name: 'Astronauts', theme: 'astronauts', hp: 10000, bounty: 3, leak: 10, look: ['#ecf0f1', '#e67e22', 'helm'] },
   { boss: 2, hp: 32000, bounty: 30, leak: 40, immune: true },
-  { name: 'Clockwork Fixer', hp: 12000, bounty: 4, leak: 20, look: ['#b08d57', '#5d4037', 'gear'] },
-  { name: 'Heartbreaker', hp: 12000, bounty: 4, leak: 20, look: ['#e84393', '#ffffff', 'hood'] },
-  { name: 'Desperado', hp: 14600, bounty: 4, leak: 20, evasion: 0.2, look: ['#a1673f', '#2d2d2d', 'hat'] },
-  { name: 'Loan Shark', hp: 15400, bounty: 4, leak: 20, look: ['#476f95', '#ffffff', 'fin'] },
-  { name: 'Snake-Oil Seller', hp: 18000, bounty: 4, leak: 20, immune: true, look: ['#6a8f3a', '#e8d27a', 'hat'] },
+  { name: 'Garden Gnomes', theme: 'gnomes', hp: 12000, bounty: 4, leak: 20, look: ['#2e86de', '#e74c3c', 'hat'] },
+  { name: 'Luchadores', theme: 'luchadores', hp: 12000, bounty: 4, leak: 20, look: ['#8e44ad', '#f1c40f', 'mask'] },
+  { name: 'Vampire Coven', theme: 'vampires', hp: 14600, bounty: 4, leak: 20, evasion: 0.2, look: ['#2d2d3a', '#c0392b', 'fangs'] },
+  { name: 'Yeti Pack', theme: 'yetis', hp: 15400, bounty: 4, leak: 20, look: ['#f4f6f7', '#85c1e9', 'ears'] },
+  { name: 'Chef Brigade', theme: 'chefs', hp: 18000, bounty: 4, leak: 20, immune: true, look: ['#ffffff', '#e74c3c', 'hat'] },
   { boss: 3, hp: 42000, bounty: 40, leak: 60, immune: true, evasion: 0.15 },
-  { name: 'Shell Gamer', hp: 15200, bounty: 5, leak: 30, look: ['#4aa3a2', '#fdf6e3', 'shell'] },
-  { name: 'Silver Tongue', hp: 16000, bounty: 5, leak: 30, immune: true, look: ['#bdc3c7', '#7f8c8d', 'hood'] },
-  { name: 'Vault Cracker', hp: 18000, bounty: 5, leak: 30, immune: true, look: ['#2f3640', '#e1b12c', 'helm'] },
-  { name: 'Tycoon', hp: 20000, bounty: 5, leak: 30, look: ['#273c75', '#e1b12c', 'hat'] },
-  { name: 'Tax Collector', hp: 21000, bounty: 5, leak: 30, look: ['#57606f', '#ced6e0', 'hat'] },
+  { name: 'Deep-Sea Divers', theme: 'divers', hp: 15200, bounty: 5, leak: 30, look: ['#d4a017', '#2e86c1', 'helm'] },
+  { name: 'Mad Scientists', theme: 'scientists', hp: 16000, bounty: 5, leak: 30, immune: true, look: ['#ecf0f1', '#27ae60', 'gear'] },
+  { name: 'Gladiators', theme: 'gladiators', hp: 18000, bounty: 5, leak: 30, immune: true, look: ['#c0392b', '#d4a017', 'helm'] },
+  { name: 'Jungle Explorers', theme: 'explorers', hp: 20000, bounty: 5, leak: 30, look: ['#c8a165', '#2e7d32', 'hat'] },
+  { name: 'Disco Crew', theme: 'disco', hp: 21000, bounty: 5, leak: 30, look: ['#e84393', '#f1c40f', 'shell'] },
   { boss: [4, 5], hpEach: 0.6, hp: 60000, bounty: 50, leak: 100, immune: true, evasion: 0.15, final: true },
 ];
 

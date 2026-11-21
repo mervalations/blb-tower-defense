@@ -180,7 +180,7 @@ PTD.Art = (function () {
     // lane colour runners
     for (const p of players) {
       x.save();
-      x.strokeStyle = p.color; x.globalAlpha = 0.5; x.lineWidth = 64 / upp; x.lineJoin = 'round'; x.lineCap = 'round';
+      x.strokeStyle = p.color; x.globalAlpha = 0.5; x.lineWidth = 64 * (128 + 64 * (PTD.RULES.roadWiden || 0)) / 192 / upp; x.lineJoin = 'round'; x.lineCap = 'round';
       x.beginPath();
       p.lane.path.forEach((pt, i) => { const q = toPx(pt.x, pt.y); i ? x.lineTo(q[0], q[1]) : x.moveTo(q[0], q[1]); });
       x.stroke();

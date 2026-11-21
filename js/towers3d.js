@@ -384,8 +384,24 @@ window.PTD = window.PTD || {};
       return { spin: crown, head: aimHead(root, y + 205, '#ffe066', 2, 70, '#b8860b'), top: y + 310 };
     },
   };
-  // How big each hand's tower is drawn (gameplay footprint is the same for all).
-  const COMBO_SCALE = [1, 1.0, 1.12, 1.2, 1.32, 1.42, 1.55, 1.72, 2.0];
+  // How big each tower is drawn (the gameplay footprint is 128 for all). Each design is fitted
+  // into a width/height budget that grows gently with the hand, so a big hand reads as bigger
+  // without swamping the towers next to it.
+  const SIZE_BUDGET = (t) => t.kind === 'card' ? { w: 124, h: 270 } : { w: 140 + t.type * 10, h: 280 + t.type * 34 };
+  function fitScale(root, t, skip) {
+    root.updateMatrixWorld(true);
+    const box = new T.Box3(), tmp = new T.Box3();
+    root.traverse(o => {
+      if (!o.isMesh || o.userData.isOutline) return;
+      for (let p = o; p && p !== root; p = p.parent) if (skip.indexOf(p) >= 0) return;
+      if (o.material && o.material.blending === T.AdditiveBlending) return;   // light beams and glows don't count
+      if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
+      tmp.copy(o.geometry.boundingBox).applyMatrix4(o.matrixWorld); box.union(tmp);
+    });
+    const size = box.getSize(new T.Vector3()), b = SIZE_BUDGET(t);
+    const fit = Math.min(b.w / Math.max(1, size.x, size.z), b.h / Math.max(1, size.y));
+    return fit * (0.97 + (t.rank / 14) * 0.06);
+  }
 
   // ------------------------------------------------------------------ build
   function build(t, ownerColor) {
@@ -398,7 +414,6 @@ window.PTD = window.PTD || {};
       const b = [clubsTower, diamondsTower, heartsTower, spadesTower][t.suit](root, y, col);
       Object.assign(parts, b);
       top = b.top;
-      scale = 0.95 + (t.rank / 14) * 0.2;
     } else {
       const C = PTD.COMBOS[t.type];
       const y0 = plinth(root, ownerColor, 62, 14);
@@ -406,7 +421,6 @@ window.PTD = window.PTD || {};
       const b = COMBO[t.type](root, y, C.color, t);
       Object.assign(parts, b);
       top = b.top;
-      scale = COMBO_SCALE[t.type] * (0.95 + (t.rank / 14) * 0.12);
     }
     mergeStatic(root, t.id);
     cartoonize(root);
@@ -429,6 +443,7 @@ window.PTD = window.PTD || {};
       parts.orbit = orbit;
     }
     root.traverse(o => { if (o.isMesh) o.userData.towerId = t.id; });
+    scale = fitScale(root, t, [banner, parts.orbit].filter(Boolean));
     root.scale.setScalar(scale);
 
     const anim = (time, dt, firing) => {
@@ -444,6 +459,6 @@ window.PTD = window.PTD || {};
     return { root, head: parts.head, banner, anim, scale, height: (top + 90) * scale };
   }
 
-  PTD.Towers3D = { build, COMBO_SCALE };
+  PTD.Towers3D = { build };
   PTD.Toon = { toon, outline, cartoonize };
 })();

@@ -248,6 +248,8 @@ PTD.Game = class {
         poisonT: 0, poisonDps: 0, bleed: false, alive: true,
         boss: isBoss, bossIdx, wait: isBoss ? 4.5 : 0, atkT: 3, phaseOff: this.rng() * 6.28,
         radius: isBoss ? 85 : 42,
+        // crew member 0..2, or 3 for the wave's leader (the last looter); purely cosmetic
+        variant: isBoss ? 0 : (this.spawned === this.toSpawn - 1 ? 3 : this.spawned % 3),
         // club-footed bosses (Smooth) trip and fall flat every 8 seconds, lying there for RULES.fallTime
         trips: isBoss && !!(PTD.BOSSES && PTD.BOSSES[bossIdx] && PTD.BOSSES[bossIdx].feet === 'club'), tripT: 8, fallT: 0,
       });

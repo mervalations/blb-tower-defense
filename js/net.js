@@ -35,7 +35,7 @@ PTD.Net = (function () {
   }
   function creepRec(c) {
     const flags = (c.slowF < 1 ? 1 : 0) | (c.stunT > 0 ? 2 : 0) | (c.bleed ? 4 : 0) | (c.wait > 0 ? 8 : 0);
-    return [c.id, c.owner, r(c.x), r(c.y), r(c.dir * 100), r(c.hp), c.maxHp, c.level, c.bossIdx == null ? -1 : c.bossIdx, flags];
+    return [c.id, c.owner, r(c.x), r(c.y), r(c.dir * 100), r(c.hp), c.maxHp, c.level, c.bossIdx == null ? -1 : c.bossIdx, flags, c.variant || 0];
   }
   function playerRec(p) {
     return [p.gold, p.alive ? 1 : 0, p.folded ? 1 : 0, p.dealsLeft, p.swapped ? 1 : 0, p.combined ? 1 : 0, p.tips,
@@ -298,12 +298,12 @@ PTD.Net = (function () {
       // creeps: keep objects alive across snapshots so projectiles can follow them
       const seen = new Set();
       for (const c of s.cr) {
-        const [id, owner, x, y, dir, hp, maxHp, level, bossIdx, flags] = c;
+        const [id, owner, x, y, dir, hp, maxHp, level, bossIdx, flags, variant] = c;
         let o = g.creepById.get(id);
         if (!o) {
           const def = PTD.LEVELS[level - 1];
           o = { id, owner, x, y, tx: x, ty: y, dir: dir / 100, def, level, boss: bossIdx >= 0, bossIdx: bossIdx >= 0 ? bossIdx : null,
-            radius: bossIdx >= 0 ? 85 : 42, phaseOff: (id * 1.7) % 6.28, alive: true, slowF: 1, stunT: 0, bleed: false };
+            radius: bossIdx >= 0 ? 85 : 42, variant: variant || 0, phaseOff: (id * 1.7) % 6.28, alive: true, slowF: 1, stunT: 0, bleed: false };
           g.creepById.set(id, o);
         }
         o.tx = x; o.ty = y; o.dir = dir / 100; o.hp = hp; o.maxHp = maxHp;

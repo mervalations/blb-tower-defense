@@ -106,12 +106,13 @@ window.PTD = window.PTD || {};
       roads.receiveShadow = true;
       S.add(roads);
 
-      // each lane gets a soft ribbon of its owner's colour down the middle
+      // each lane gets a soft ribbon of its owner's colour down the middle, sized to the road
+      const RIB = 34 * (128 + 64 * (PTD.RULES.roadWiden || 0)) / 192;
       for (const pl of g.players) {
         const pts = pl.lane.path, pos = [];
         for (let i = 1; i < pts.length; i++) {
           const a = pts[i - 1], b = pts[i], dx = b.x - a.x, dy = b.y - a.y, L = Math.hypot(dx, dy) || 1;
-          const nx = -dy / L * 34, ny = dx / L * 34;
+          const nx = -dy / L * RIB, ny = dx / L * RIB;
           const q = [[a.x + nx, a.y + ny], [a.x - nx, a.y - ny], [b.x - nx, b.y - ny], [b.x + nx, b.y + ny]].map(([x, y]) => W2T(x, y, 2.5));
           pos.push(...q[0].toArray(), ...q[1].toArray(), ...q[2].toArray(), ...q[0].toArray(), ...q[2].toArray(), ...q[3].toArray());
         }

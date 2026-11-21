@@ -1,5 +1,6 @@
 // Detailed 3D looter characters for the 3D renderer.
-// PTD.Looters3D.build(def) -> { rig, anim(t, moving, dt), flash: [materials], detail: [objects] }
+// PTD.Looters3D.build(def, variant) -> { rig, anim(t, moving, dt), flash: [materials], detail: [objects] }
+// def.theme picks a crew from PTD.CREWS (js/crews3d.js); variant 0..2 is a crew member, 3 the leader.
 // Characters are modelled about 2.4 units tall; the renderer scales them to the looter's radius.
 window.PTD = window.PTD || {};
 
@@ -97,6 +98,9 @@ window.PTD = window.PTD || {};
     else if (kind === 'argyle') { for (let i = -1; i < 3; i++) for (let j = -1; j < 3; j++) { x.beginPath(); x.moveTo(i * 64 + 32, j * 64); x.lineTo(i * 64 + 64, j * 64 + 32); x.lineTo(i * 64 + 32, j * 64 + 64); x.lineTo(i * 64, j * 64 + 32); x.closePath(); if ((i + j) % 2 === 0) x.fill(); } }
     else if (kind === 'check') { x.globalAlpha = 0.55; for (let i = 0; i < 128; i += 32) { x.fillRect(i, 0, 16, 128); x.fillRect(0, i, 128, 16); } }
     else if (kind === 'pinstripe') for (let i = 0; i < 128; i += 16) x.fillRect(i, 0, 2, 128);
+    else if (kind === 'stars') { for (let i = 0; i < 6; i++) { const cx = (i * 47) % 128, cy = (i * 71) % 128; x.beginPath(); for (let k = 0; k < 10; k++) { const r = k % 2 ? 4 : 10, a = k / 10 * TAU - Math.PI / 2; x.lineTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r); } x.fill(); } }
+    else if (kind === 'wraps') { x.globalAlpha = 0.8; for (let i = 0; i < 128; i += 18) { x.save(); x.translate(64, i); x.rotate((i % 36 ? 1 : -1) * 0.12); x.fillRect(-80, 0, 160, 3); x.restore(); } }
+    else if (kind === 'sequins') for (let i = 0; i < 8; i++) for (let j = 0; j < 8; j++) { x.globalAlpha = (i * 3 + j * 5) % 7 / 7 * 0.8 + 0.2; x.beginPath(); x.arc(8 + i * 16 + (j % 2) * 8, 8 + j * 16, 5, 0, TAU); x.fill(); }
     const t = new T.CanvasTexture(c); t.colorSpace = T.SRGBColorSpace; t.wrapS = t.wrapT = T.RepeatWrapping; t.repeat.set(2, 2);
     const m = new T.MeshStandardMaterial({ map: t, roughness: 0.9 });
     m.userData.shared = true;
@@ -207,13 +211,19 @@ window.PTD = window.PTD || {};
     const legs = [], arms = [];
     for (const s of [-1, 1]) {
       const hip = pivot(rig, [s * 0.16, 0.95, 0]);
-      if (!o.robe) {
+      if (o.boxy) {
+        part(hip, box(), bottom, [0.2, 0.62, 0.2], [0, -0.42, 0]).castShadow = true;
+        part(hip, box(), shoes, [0.24, 0.14, 0.32], [0, -0.85, 0.05]);
+      } else if (!o.robe) {
         part(hip, cap(), bottom, [0.105, 0.3, 0.105], [0, -0.4, 0]).castShadow = true;
-        part(hip, sph(), shoes, [0.13, 0.085, 0.21], [0, -0.85, 0.06]);
+        if (o.flares) part(hip, cone(), bottom, [0.17, 0.32, 0.17], [0, -0.7, 0]);
+        if (o.bigShoes) part(hip, sph(), shoes, [0.17, 0.1, 0.36], [0, -0.85, 0.16]).castShadow = true;
+        else if (o.flippers) part(hip, sph(), gloss(o.shoes || '#2c3e50'), [0.16, 0.04, 0.4], [0, -0.9, 0.18]);
+        else part(hip, sph(), shoes, [0.13, 0.085, 0.21], [0, -0.85, 0.06]);
       } else part(hip, sph(), shoes, [0.12, 0.08, 0.19], [0, -0.85, 0.07]);
       legs.push(hip);
     }
-    const torso = part(rig, cap(), ctx.topM, [0.3 * (o.wide || 1), 0.24, 0.24], [0, 1.33, 0]);
+    const torso = o.boxy ? part(rig, box(), ctx.topM, [0.64 * (o.wide || 1), 0.7, 0.46], [0, 1.33, 0]) : part(rig, cap(), ctx.topM, [0.3 * (o.wide || 1), 0.24, 0.24], [0, 1.33, 0]);
     torso.castShadow = true;
     if (o.robe) part(rig, cone(), ctx.topM, [0.48, 1.05, 0.42], [0, 0.6, 0]).castShadow = true;
     if (o.belt) part(rig, cyl(), mat(o.belt, { roughness: 0.4 }), [0.31 * (o.wide || 1), 0.07, 0.25], [0, 1.06, 0]);
@@ -223,10 +233,11 @@ window.PTD = window.PTD || {};
     if (o.tie) part(rig, cone(), gloss(o.tie), [0.04, 0.24, 0.02], [0, 1.38, 0.255], [Math.PI, 0, 0]);
     if (o.chain) ctx.detail.push(part(rig, tor(), metal('#e1b12c'), [0.17, 0.2, 0.17], [0, 1.5, 0.12], [1.2, 0, 0]));
     if (o.poncho) part(rig, cone(), fabric(o.poncho), [0.46, 0.55, 0.4], [0, 1.4, 0]).castShadow = true;
-    if (o.cape) part(rig, geo('capeG', () => new T.CylinderGeometry(0.34, 0.6, 1.2, 16, 1, true, Math.PI * 0.55, Math.PI * 0.9)), mat(o.cape, { side: T.DoubleSide, roughness: 0.8 }), [1, 1, 1], [0, 1.05, 0], [0, Math.PI, 0]);
+    if (o.cape) part(rig, geo('capeG', () => new T.CylinderGeometry(0.34, 0.6, 1.2, 16, 1, true, Math.PI * 0.55, Math.PI * 0.9)), mat(o.cape, { side: T.DoubleSide, roughness: 0.8 }), [1, 1, 1], [0, 1.05, -0.04]);   // arc covers the back
     for (const s of [-1, 1]) {
       const sh = pivot(rig, [s * 0.36 * (o.wide || 1), 1.55, 0]);
-      part(sh, cap(), o.robe || o.coat ? fabric(o.coat || o.top) : ctx.topM, [0.075, 0.2, 0.075], [0, -0.24, 0]);
+      if (o.boxy) part(sh, box(), ctx.topM, [0.15, 0.44, 0.15], [0, -0.25, 0]);
+      else part(sh, cap(), o.robe || o.coat ? fabric(o.coat || o.top) : ctx.topM, [0.075 * (o.armW || 1), 0.2, 0.075 * (o.armW || 1)], [0, -0.24, 0]);
       const hand = part(sh, sph(), o.glove ? mat(o.glove) : ctx.skinM, [0.085, 0.085, 0.085], [0, -0.52, 0.02]);
       arms.push(sh);
       if (s === 1) ctx.rightHand = hand;
@@ -348,35 +359,6 @@ window.PTD = window.PTD || {};
     return { crabLegs: legs, claws };
   }
 
-  function moth(ctx) {
-    const rig = ctx.rig;
-    const fuzz = ctx.skinM;
-    const body = pivot(rig, [0, 1.3, 0]);
-    part(body, sph(), fuzz, [0.24, 0.45, 0.24], [0, 0, -0.1], [-0.6, 0, 0]).castShadow = true;
-    part(body, sph(), fabric('#fff7cc'), [0.27, 0.18, 0.25], [0, 0.25, 0.08]);
-    const head = pivot(body, [0, 0.42, 0.18]);
-    part(head, sph(), fuzz, [0.2, 0.19, 0.19]);
-    for (const s of [-1, 1]) {
-      part(head, sph(), gloss('#1a1a1a'), [0.09, 0.11, 0.08], [s * 0.12, 0.02, 0.12]);
-      const ant = pivot(head, [s * 0.06, 0.16, 0.08]);
-      part(ant, cyl(), mat('#5a4500'), [0.012, 0.35, 0.012], [s * 0.06, 0.16, 0.05], [0.4, 0, -s * 0.4]);
-      for (let f = 0; f < 4; f++) ctx.detail.push(part(ant, box(), fabric('#8a6d00'), [0.12 - f * 0.02, 0.012, 0.03], [s * (0.04 + f * 0.03), 0.1 + f * 0.06, 0.03 + f * 0.02], [0.4, 0, -s * 0.4]));
-    }
-    const wings = [];
-    const wingMat = mat('#f1c40f', { side: T.DoubleSide, roughness: 0.6, transparent: true, opacity: 0.92 });
-    const spot = glow('#ffefa0', 1.3);
-    for (const s of [-1, 1]) {
-      const w = pivot(body, [s * 0.15, 0.1, -0.05]);
-      part(w, geo('wingU', () => new T.CircleGeometry(0.55, 24)), wingMat, [1, 0.75, 1], [s * 0.5, 0.25, 0], [0, s * 0.2, 0]);
-      part(w, geo('wingL', () => new T.CircleGeometry(0.38, 20)), wingMat, [1, 0.8, 1], [s * 0.35, -0.35, 0], [0, s * 0.2, 0]);
-      ctx.detail.push(part(w, geo('wingSpot', () => new T.CircleGeometry(0.12, 16)), spot, [1, 1, 1], [s * 0.55, 0.3, 0.01], [0, s * 0.2, 0]));
-      wings.push(w);
-    }
-    ctx.mothBody = body;
-    sack(ctx, [0, 0.55, 0.05], 0.7);
-    return { wings };
-  }
-
   function snake(ctx) {
     const rig = ctx.rig, m = ctx.skinM, belly = fabric(ctx.spec.accent);
     const segs = [];
@@ -401,37 +383,377 @@ window.PTD = window.PTD || {};
     return { segs, tongue };
   }
 
-  // ------------------------------------------------------------------ catalogue
-  // Each looter (by level name) -> body plan, head, colours, outfit and props.
-  const SPECS = {
-    'Sneak Mouse': { pattern: ['stripes', '#ecf0f1'], body: 'biped', head: 'rodent', fur: '#9aa0a6', top: '#2c3e50', bottom: '#1f2a36', mask: '#111111', hat: ['beanie', '#1c1c1c'], tail: 'thin', tailC: '#f4a6b8' },
-    'Alley Rat': { pattern: ['check', '#5c3a21'], body: 'biped', head: 'rodent', fur: '#7d6b5d', top: '#8e5b3a', vest: '#5c3a21', bottom: '#3b3b3b', hat: ['bandana', '#c0392b'], tail: 'thin', tailC: '#d98c8c', ear: 0.15 },
-    'Coin Crab': { body: 'crab', shell: '#e0703a' },
-    'Sock Goblin': { body: 'biped', head: 'goblin', skin: '#6dbb63', top: '#8d6e63', belt: '#4e342e', bottom: '#5d4037', hat: ['sock', '#f7f7f7', '#e74c3c'] },
-    'Rag Raccoon': { pattern: ['stripes', '#2c3e50'], body: 'biped', head: 'rodent', fur: '#6b6f78', inner: '#2b2b2b', nose: '#111111', top: '#7f8c8d', bottom: '#4a4a4a', mask: '#1f2228', tail: 'ringed', tailC: '#6b6f78', ear: 0.14 },
-    'Jackal Pup': { pattern: ['dots', '#e67e22'], body: 'biped', head: 'canine', fur: '#c9944a', top: '#3b2a1a', bottom: '#5a4632', chain: true, tail: 'bushy', tailC: '#b07d3a' },
-    'Pocket Weasel': { body: 'biped', head: 'canine', fur: '#a0522d', muzzle: '#ffe8c2', coat: '#2f2f2f', top: '#444', bottom: '#2b2b2b', mask: '#111', tail: 'bushy', tailC: '#8b4513', hat: ['fedora', '#3a3a3a'] },
-    'Brute Twins': { pattern: ['stripes', '#e74c3c'], body: 'biped', head: 'human', skin: '#8a6fd1', top: '#ecf0f1', bottom: '#2c3e50', wide: 1.35, chain: true, hair: '#1a1a1a', angry: true, horns: true, knuckles: true },
-    'Card Shark': { pattern: ['pinstripe', '#2c3e50'], body: 'biped', head: 'shark', skin: '#5b8fb9', top: '#ecf0f1', vest: '#1b2631', bottom: '#1b2631', tie: '#c0392b', hat: ['visor'], tail: 'fin', prop: 'coin' },
-    'Iron Knuckle': { pattern: ['stripes', '#2c3e50'], body: 'biped', head: 'human', skin: '#e0ac8a', top: '#d35400', bottom: '#d35400', belt: '#2c3e50', hat: ['helm', '#7f8c8d'], knuckles: true, angry: true, beard: '#3b2a1a' },
-    'Velvet Fox': { pattern: ['dots', '#f5d76e'], body: 'biped', head: 'canine', fur: '#d9622b', muzzle: '#fff3e0', top: '#5b2c6f', vest: '#7d3c98', bottom: '#2c2c2c', tail: 'bushy', tailC: '#d9622b', tie: '#f5d76e' },
-    'Silk Viper': { body: 'snake', skin: '#2e9e6b', accent: '#f1c40f' },
-    'Masked Bandit': { body: 'biped', head: 'human', skin: '#d8a27a', top: '#34495e', bottom: '#1c2833', cape: '#111111', faceMask: '#111111', hat: ['cowboy', '#111111'], belt: '#5d4037', angry: true },
-    'Fortune Teller': { body: 'biped', head: 'human', skin: '#c68e6e', top: '#8e44ad', robe: true, hat: ['hood', '#6c3483'], prop: 'crystal', hair: '#2b1d12', iris: '#9b59b6' },
-    'Gold Moth': { body: 'moth', skin: '#e6b800' },
-    'Clockwork Fixer': { pattern: ['check', '#8a6d3b'], body: 'biped', head: 'human', skin: '#e0ac8a', top: '#b08d57', bottom: '#5d4037', belt: '#3e2723', goggles: '#7fdfff', gear: true, prop: 'wrench', mustache: '#5d4037', hair: '#5d4037' },
-    'Heartbreaker': { pattern: ['dots', '#ffffff'], body: 'biped', head: 'human', skin: '#f0c8a8', top: '#e84393', bottom: '#2d3436', hat: ['hood', '#fd79a8'], hearts: true, grin: true, hair: '#6d214f' },
-    'Desperado': { pattern: ['check', '#5d4037'], body: 'biped', head: 'human', skin: '#c68e6e', top: '#a1673f', poncho: '#c0392b', bottom: '#5d4037', hat: ['cowboy', '#6e4b2a', '#2d2d2d'], beard: '#2b1d12', angry: true },
-    'Loan Shark': { body: 'biped', head: 'shark', skin: '#476f95', top: '#f8f9f9', coat: '#ecf0f1', bottom: '#f8f9f9', shirtV: '#2c3e50', chain: true, tail: 'fin', prop: 'coin' },
-    'Snake-Oil Seller': { body: 'biped', head: 'human', skin: '#d8b48a', top: '#6a8f3a', coat: '#4d6b27', bottom: '#2f3b1c', hat: ['top', '#2a2a2a', '#e8d27a'], prop: 'bottle', mustache: '#3b2a1a', grin: true },
-    'Shell Gamer': { pattern: ['argyle', '#4aa3a2'], body: 'biped', head: 'human', skin: '#e0ac8a', top: '#fdf6e3', vest: '#4aa3a2', bottom: '#2c3e50', hat: ['fedora', '#4aa3a2', '#1d3c3c'], prop: 'cups', grin: true, hair: '#2b1d12' },
-    'Silver Tongue': { body: 'biped', head: 'human', skin: '#e8cfc0', top: '#bdc3c7', robe: true, hat: ['hood', '#95a5a6'], grin: true, iris: '#7f8c8d', chain: true },
-    'Vault Cracker': { body: 'biped', head: 'human', skin: '#d8a27a', top: '#2f3640', bottom: '#2f3640', glove: '#111111', hat: ['helm', '#e1b12c'], lamp: true, prop: 'stethoscope', faceMask: '#1e272e' },
-    'Tycoon': { pattern: ['pinstripe', '#e1b12c'], body: 'biped', head: 'human', skin: '#f0c8a8', top: '#273c75', coat: '#1e2a5a', bottom: '#273c75', shirtV: '#ffffff', tie: '#e1b12c', wide: 1.3, hat: ['top', '#111111', '#e1b12c'], prop: 'cane', monocle: true, mustache: '#ecf0f1', hair: '#ecf0f1' },
-    'Tax Collector': { pattern: ['pinstripe', '#ced6e0'], body: 'biped', head: 'human', skin: '#e8cfc0', top: '#57606f', coat: '#4b5260', bottom: '#2f3542', shirtV: '#ffffff', tie: '#2f3542', hat: ['bowler', '#2f3542'], prop: 'clipboard', iris: '#2c3e50', angry: true },
-  };
+  // ------------------------------------------------------------------ themed crew kit
+  // Extra heads, headwear, props, add-ons and bodies used by the crews in js/crews3d.js.
+  const tri = () => geo('tri', () => new T.CylinderGeometry(1, 1, 1, 3));
+  const glass = (c, o) => mat(c, { transparent: true, opacity: o || 0.3, roughness: 0.05, depthWrite: false });
 
-  // How each looter moves, and the little move it does now and then.
+  function alienHead(ctx, head, o) {
+    part(head, sph(), ctx.skinM, [0.4, 0.36, 0.36], [0, 0.06, 0]).castShadow = true;
+    part(head, sph(), ctx.skinM, [0.2, 0.16, 0.2], [0, -0.2, 0.06]);
+    const n = o.eyes3 ? [-0.17, 0, 0.17] : [-0.14, 0.14];
+    for (const x of n) {
+      const e = part(head, sph(), gloss('#0b0b12'), [o.eyes3 ? 0.075 : 0.11, 0.07, 0.05], [x, x === 0 ? 0.16 : 0.05, 0.31], [0, 0, x * -2.6]);
+      ctx.eyes.push(e);
+      ctx.detail.push(part(head, lowSph(), glow('#ffffff', 1.5), [0.02, 0.02, 0.01], [x + 0.03, (x === 0 ? 0.16 : 0.05) + 0.03, 0.355]));
+    }
+    ctx.detail.push(part(head, tor(), mat('#2a0f2a'), [0.04, 0.025, 0.03], [0, -0.17, 0.27], [0, 0, Math.PI]));
+    for (const s of [-1, 1]) {
+      const ant = pivot(head, [s * 0.12, 0.36, 0]);
+      ctx.ears.push(ant);
+      part(ant, cyl(), ctx.skinM, [0.015, 0.25, 0.015], [s * 0.04, 0.11, 0], [0, 0, -s * 0.3]);
+      part(ant, sph(), glow(o.antC || '#fff36b', 2), [0.05, 0.05, 0.05], [s * 0.08, 0.24, 0]);
+    }
+  }
+  function robotHead(ctx, head, o) {
+    part(head, box(), ctx.skinM, [0.5, 0.42, 0.44]).castShadow = true;
+    part(head, box(), mat('#1b2330'), [0.4, 0.16, 0.02], [0, 0.05, 0.22]);
+    for (const s of [-1, 1]) {
+      const e = part(head, cyl(), glow(o.eyeC || '#5ef2ff', 2.4), [0.055, 0.02, 0.055], [s * 0.1, 0.05, 0.235], [Math.PI / 2, 0, 0]);
+      ctx.eyes.push(e);
+      part(head, cyl(), metal('#7f8c8d'), [0.07, 0.06, 0.07], [s * 0.26, 0, 0], [0, 0, Math.PI / 2]);   // ear bolts
+    }
+    for (let i = 0; i < 4; i++) ctx.detail.push(part(head, box(), mat('#1b2330'), [0.05, 0.03, 0.02], [(i - 1.5) * 0.07, -0.12, 0.225]));
+    part(head, cyl(), metal('#95a5a6'), [0.015, 0.18, 0.015], [0, 0.29, 0]);
+    ctx.ears.push(part(head, sph(), glow(o.eyeC || '#5ef2ff', 2), [0.045, 0.045, 0.045], [0, 0.4, 0]));
+  }
+  function zombieHead(ctx, head, o) {
+    part(head, sph(), ctx.skinM, [0.3, 0.33, 0.3]).castShadow = true;
+    part(head, sph(), ctx.skinM, [0.05, 0.065, 0.06], [0.02, -0.03, 0.3]);
+    // mismatched eyes: one big and staring, one droopy
+    ctx.eyes.push(part(head, sph(), gloss('#f3f7d0'), [0.1, 0.11, 0.06], [-0.11, 0.07, 0.25]));
+    ctx.detail.push(part(head, sph(), gloss('#111'), [0.025, 0.025, 0.02], [-0.12, 0.06, 0.31]));
+    ctx.eyes.push(part(head, sph(), gloss('#f3f7d0'), [0.07, 0.04, 0.05], [0.12, 0.04, 0.26]));
+    ctx.detail.push(part(head, box(), mat('#3d5a2a'), [0.1, 0.02, 0.02], [0.12, 0.07, 0.28], [0, 0, -0.25]));   // droopy lid
+    ctx.detail.push(part(head, sph(), mat('#3a1010'), [0.08, 0.06, 0.03], [0, -0.15, 0.27]));                  // gaping mouth
+    for (let i = 0; i < 4; i++) ctx.detail.push(part(head, box(), mat('#2b2b2b'), [0.006, 0.05, 0.01], [0.04 + i * 0.035, 0.22, 0.2]));   // stitches
+    ctx.detail.push(part(head, box(), mat('#2b2b2b'), [0.14, 0.006, 0.01], [0.09, 0.22, 0.2]));
+    if (o.brain !== false) part(head, sph(), mat('#f5a3b5', { roughness: 0.5 }), [0.13, 0.08, 0.12], [-0.08, 0.27, 0.02]);
+    if (o.hair) part(head, sph(), fabric(o.hair), [0.31, 0.16, 0.31], [0.05, 0.2, -0.05]);
+    if (o.bolts) for (const s of [-1, 1]) part(head, cyl(), metal('#95a5a6'), [0.03, 0.12, 0.03], [s * 0.3, -0.12, 0], [0, 0, Math.PI / 2]);
+  }
+  function clownHead(ctx, head, o) {
+    part(head, sph(), ctx.skinM, [0.3, 0.32, 0.3]).castShadow = true;
+    part(head, sph(), glow('#ff2a2a', 1.1), [0.08, 0.08, 0.08], [0, -0.02, 0.31]);                             // red nose
+    for (const s of [-1, 1]) part(head, OCTA(), mat('#2e86de'), [0.05, 0.08, 0.01], [s * 0.11, 0.06, 0.275]);  // diamond eye paint
+    eyes(ctx, head, { y: 0.06, z: 0.27, sp: 0.11, size: 0.07, iris: '#2e86de', brow: '#111' });
+    ctx.detail.push(part(head, tor(), mat('#e74c3c'), [0.14, 0.1, 0.06], [0, -0.13, 0.25], [0, 0, Math.PI]));    // huge painted grin
+  }
+  function vampireHead(ctx, head, o) {
+    humanHead(ctx, head, Object.assign({}, o, { hair: null, iris: '#c0392b', angry: true }));
+    part(head, sph(), fabric(o.hair || '#111'), [0.31, 0.19, 0.31], [0, 0.18, -0.04]);
+    part(head, cone(), fabric(o.hair || '#111'), [0.06, 0.1, 0.02], [0, 0.22, 0.28], [Math.PI, 0, 0]);         // widow's peak
+    for (const s of [-1, 1]) {
+      ctx.detail.push(part(head, cone(), gloss('#ffffff'), [0.018, 0.05, 0.018], [s * 0.035, -0.17, 0.29], [Math.PI, 0, 0]));   // fangs
+      part(head, cone(), ctx.skinM, [0.04, 0.12, 0.03], [s * 0.31, 0.06, 0], [0, 0, -s * 1.1]);                                 // pointy ears
+    }
+  }
+  function yetiHead(ctx, head, o) {
+    part(head, sph(), ctx.furM, [0.36, 0.34, 0.34]).castShadow = true;
+    part(head, sph(), skin(o.face || '#9fb3c8'), [0.24, 0.22, 0.1], [0, -0.02, 0.27]);
+    for (const s of [-1, 1]) part(head, cone(), gloss('#f5efe0'), [0.05, 0.16, 0.05], [s * 0.25, 0.3, 0], [0, 0, -s * 0.6]);
+    eyes(ctx, head, { y: 0.07, z: 0.33, sp: 0.09, size: 0.065, iris: '#2c3e50', brow: '#5d6d7e', angry: true });
+    ctx.detail.push(part(head, sph(), mat('#3a1010'), [0.1, 0.04, 0.03], [0, -0.12, 0.34]));
+    for (const s of [-1, 1]) ctx.detail.push(part(head, cone(), gloss('#ffffff'), [0.02, 0.05, 0.02], [s * 0.05, -0.1, 0.36], [Math.PI, 0, 0]));
+  }
+  function gnomeHead(ctx, head, o) {
+    humanHead(ctx, head, Object.assign({}, o, { beard: null }));
+    part(head, sph(), skin('#f29c9c'), [0.09, 0.08, 0.08], [0, -0.03, 0.32]);                                      // big round nose
+    part(head, cone(), fabric(o.beard || '#ffffff'), [0.27, 0.5, 0.2], [0, -0.32, 0.15], [Math.PI + 0.25, 0, 0]).castShadow = true;
+    part(head, sph(), fabric(o.beard || '#ffffff'), [0.28, 0.14, 0.2], [0, -0.1, 0.18]);
+  }
+  function mummyHead(ctx, head, o) {
+    part(head, sph(), ctx.skinM, [0.3, 0.33, 0.3]).castShadow = true;
+    ctx.eyes.push(part(head, sph(), glow('#ffe066', 1.8), [0.05, 0.035, 0.03], [-0.1, 0.06, 0.28]));
+    ctx.eyes.push(part(head, sph(), mat('#1b1b1b'), [0.05, 0.02, 0.03], [0.1, 0.06, 0.28]));
+    for (let i = 0; i < 2; i++) ctx.detail.push(part(head, box(), ctx.skinM, [0.3, 0.035, 0.02], [0.04, 0.16 - i * 0.24, 0.29], [0, 0, 0.3 - i * 0.6]));   // loose wraps
+  }
+  function diverHead(ctx, head, o) {
+    const brass = metal('#c99a2e');
+    part(head, sph(), brass, [0.42, 0.42, 0.42]).castShadow = true;
+    part(head, cyl(), brass, [0.36, 0.12, 0.36], [0, -0.38, 0]);
+    part(head, disc(), mat('#0e2a3a', { roughness: 0.2 }), [0.19, 0.4, 0.19], [0, 0.02, 0.39], [Math.PI / 2, 0, 0]);
+    eyes(ctx, head, { y: 0.04, z: 0.4, sp: 0.07, size: 0.055, iris: '#111', brow: null });
+    part(head, tor(), brass, [0.2, 0.2, 0.25], [0, 0.02, 0.41]);
+    part(head, disc(), glass('#bfe9ff', 0.25), [0.19, 0.3, 0.19], [0, 0.02, 0.47], [Math.PI / 2, 0, 0]);
+    for (const s of [-1, 1]) { part(head, tor(), brass, [0.09, 0.09, 0.12], [s * 0.37, 0.04, 0.05], [0, Math.PI / 2, 0]); part(head, disc(), mat('#0e2a3a'), [0.08, 0.3, 0.08], [s * 0.4, 0.04, 0.05], [0, 0, Math.PI / 2]); }
+    part(head, cyl(), brass, [0.06, 0.1, 0.06], [0, 0.44, 0]);
+    part(head, new T.TubeGeometry(new T.CatmullRomCurve3([new T.Vector3(0, 0.1, -0.38), new T.Vector3(0, -0.2, -0.65), new T.Vector3(0, -0.7, -0.6)]), 10, 0.035, 6), mat('#3b3b3b'));   // air hose
+  }
+
+  function crewHat(ctx, kind, c, band) {
+    const h = ctx.head;
+    switch (kind) {
+      case 'tricorn':
+        part(h, tri(), fabric(c), [0.46, 0.06, 0.46], [0, 0.25, 0], [0, Math.PI, 0]).castShadow = true;
+        part(h, sph(), fabric(c), [0.26, 0.18, 0.26], [0, 0.3, 0]);
+        if (band) part(h, tri(), metal(band), [0.47, 0.02, 0.47], [0, 0.28, 0], [0, Math.PI, 0]);
+        part(h, sph(), gloss('#f7f7f7'), [0.06, 0.06, 0.02], [0, 0.36, 0.24]);                                     // skull badge
+        break;
+      case 'viking':
+        part(h, sph(), metal(c), [0.34, 0.26, 0.34], [0, 0.13, 0]).castShadow = true;
+        part(h, cyl(), metal(band || c), [0.345, 0.05, 0.345], [0, 0.12, 0]);
+        part(h, box(), metal(band || c), [0.04, 0.16, 0.03], [0, 0.03, 0.33]);
+        for (const s of [-1, 1]) part(h, cone(), gloss('#fbf3dc'), [0.07, 0.3, 0.07], [s * 0.33, 0.32, 0], [0, 0, -s * 1.0]).castShadow = true;
+        break;
+      case 'bubble':
+        part(h, sph(), glass('#d8f3ff', 0.22), [0.46, 0.46, 0.46], [0, 0.02, 0]);
+        part(h, tor(), metal('#bdc3c7'), [0.33, 0.33, 0.45], [0, -0.33, 0], [Math.PI / 2, 0, 0]);
+        ctx.detail.push(part(h, sph(), glow('#ffffff', 1.3), [0.06, 0.12, 0.02], [-0.22, 0.22, 0.33], [0, 0, 0.5]));   // glare
+        break;
+      case 'toque':
+        part(h, cyl(), fabric(c || '#ffffff'), [0.26, 0.14, 0.26], [0, 0.3, 0]);
+        part(h, sph(), fabric(c || '#ffffff'), [0.33, 0.22, 0.33], [0, 0.5, 0]).castShadow = true;
+        for (const s of [-1, 1]) part(h, sph(), fabric(c || '#ffffff'), [0.18, 0.16, 0.18], [s * 0.17, 0.48, 0.05]);
+        break;
+      case 'wizard': {
+        part(h, cyl(), fabric(c), [0.48, 0.02, 0.48], [0, 0.26, 0]);
+        const tip = pivot(h, [0, 0.27, 0]); tip.rotation.x = -0.25;
+        part(tip, cone(), fabric(c), [0.27, 0.75, 0.27], [0, 0.37, 0]).castShadow = true;
+        for (let i = 0; i < 3; i++) ctx.detail.push(part(tip, OCTA(), glow(band || '#f5d76e', 1.8), [0.04, 0.04, 0.02], [Math.cos(i * 2.1) * 0.13, 0.15 + i * 0.17, Math.sin(i * 2.1) * 0.13 + 0.04]));
+        break;
+      }
+      case 'knight':
+        part(h, sph(), metal(c), [0.35, 0.3, 0.35], [0, 0.11, -0.01]).castShadow = true;
+        for (const s of [-1, 1]) part(h, box(), metal(c), [0.06, 0.24, 0.16], [s * 0.3, -0.07, 0.12]);
+        part(h, box(), metal(c), [0.04, 0.2, 0.04], [0, 0.07, 0.33]);
+        part(h, sph(), fabric(band || '#c0392b'), [0.07, 0.24, 0.2], [0, 0.48, -0.08], [-0.4, 0, 0]).castShadow = true;   // plume
+        break;
+      case 'ninja':
+        part(h, sph(), fabric(c), [0.325, 0.345, 0.325], [0, 0.02, -0.01]).castShadow = true;
+        // fall through to add the headband
+      case 'headband': {
+        part(h, cyl(), fabric(band || '#e74c3c'), [0.335, 0.055, 0.335], [0, 0.15, 0]);
+        const tails = pivot(h, [0, 0.15, -0.32]); ctx.ears.push(tails);
+        for (const s of [-1, 1]) part(tails, box(), fabric(band || '#e74c3c'), [0.05, 0.02, 0.28], [s * 0.04, -0.05, -0.12], [0.5, s * 0.3, 0]);
+        break;
+      }
+      case 'luchador':
+        part(h, sph(), fabric(c), [0.312, 0.342, 0.312], [0, 0, 0]).castShadow = true;
+        for (const s of [-1, 1]) {
+          part(h, sph(), fabric(band || '#f1c40f'), [0.1, 0.11, 0.03], [s * 0.11, 0.06, 0.275], [0, 0, -s * 0.5]);
+          part(h, cone(), fabric(band || '#f1c40f'), [0.05, 0.16, 0.02], [s * 0.2, 0.14, 0.23], [0, -s * 0.6, -s * 0.9]);   // flame flicks
+        }
+        part(h, box(), fabric(band || '#f1c40f'), [0.04, 0.14, 0.34], [0, 0.3, -0.02]);
+        break;
+      case 'gladiator':
+        part(h, sph(), metal(c), [0.34, 0.28, 0.34], [0, 0.12, 0]).castShadow = true;
+        for (const s of [-1, 1]) part(h, box(), metal(c), [0.05, 0.22, 0.14], [s * 0.29, -0.06, 0.14]);
+        part(h, box(), fabric(band || '#c0392b'), [0.06, 0.2, 0.48], [0, 0.44, -0.02]).castShadow = true;
+        break;
+      case 'afro':
+        part(h, sph(), fabric(c), [0.41, 0.33, 0.4], [0, 0.22, -0.1]).castShadow = true;
+        ctx.detail.push(part(h, box(), gloss('#e74c3c'), [0.12, 0.03, 0.02], [0.2, 0.44, 0.16], [0, 0, 0.6]));   // afro pick
+        break;
+      case 'cavehair':
+        part(h, sph(), fabric(c), [0.33, 0.2, 0.33], [0, 0.17, -0.02]);
+        for (let i = 0; i < 6; i++) part(h, cone(), fabric(c), [0.07, 0.2, 0.07], [Math.cos(i) * 0.18, 0.32, Math.sin(i) * 0.18 - 0.03], [Math.sin(i) * 0.5, 0, -Math.cos(i) * 0.5]);
+        part(h, cyl(), gloss('#f7f2e0'), [0.025, 0.36, 0.025], [0, 0.36, 0.05], [0, 0, Math.PI / 2]);
+        for (const s of [-1, 1]) part(h, sph(), gloss('#f7f2e0'), [0.045, 0.045, 0.045], [s * 0.18, 0.36, 0.05]);
+        break;
+      case 'clownwig':
+        for (const s of [-1, 1]) part(h, sph(), fabric(c), [0.2, 0.2, 0.2], [s * 0.3, 0.1, -0.05]).castShadow = true;
+        part(h, sph(), ctx.skinM, [0.3, 0.12, 0.3], [0, 0.24, 0]);
+        part(h, cyl(), fabric(band || '#2ecc71'), [0.12, 0.12, 0.12], [0.05, 0.36, 0], [0, 0, 0.2]);           // tiny hat
+        part(h, cyl(), fabric(band || '#2ecc71'), [0.18, 0.015, 0.18], [0.04, 0.3, 0], [0, 0, 0.2]);
+        break;
+      case 'gnome': {
+        const tip = pivot(h, [0, 0.2, -0.02]); tip.rotation.x = -0.35;
+        part(tip, cone(), fabric(c), [0.32, 0.85, 0.32], [0, 0.4, 0]).castShadow = true;
+        ctx.ears.push(tip);
+        break;
+      }
+      case 'pith':
+        part(h, sph(), fabric(c), [0.36, 0.24, 0.37], [0, 0.17, 0]).castShadow = true;
+        part(h, cyl(), fabric(c), [0.46, 0.02, 0.48], [0, 0.16, 0]);
+        part(h, cyl(), fabric(band || '#5d4037'), [0.365, 0.05, 0.375], [0, 0.2, 0]);
+        break;
+      case 'nemes':
+        part(h, sph(), patterned(c, 'stripes', band || '#2e86de'), [0.34, 0.3, 0.33], [0, 0.1, -0.02]).castShadow = true;
+        for (const s of [-1, 1]) part(h, box(), patterned(c, 'stripes', band || '#2e86de'), [0.12, 0.45, 0.06], [s * 0.27, -0.25, 0.06]);
+        part(h, cone(), metal('#e1b12c'), [0.04, 0.1, 0.03], [0, 0.32, 0.3]);                                     // cobra crest
+        break;
+      case 'wildhair':
+        for (let i = 0; i < 7; i++) part(h, cone(), fabric(c), [0.08, 0.24, 0.08], [Math.cos(i * 0.9) * 0.24, 0.12 + (i % 2) * 0.05, Math.sin(i * 0.9) * 0.2 - 0.06], [Math.sin(i * 0.9) * -0.9, 0, -Math.cos(i * 0.9) * 0.9]);
+        part(h, sph(), ctx.skinM, [0.29, 0.12, 0.29], [0, 0.25, 0]);   // shiny bald top
+        break;
+      case 'crown':
+        part(h, cyl(), metal('#e1b12c'), [0.22, 0.1, 0.22], [0, 0.32, 0]);
+        for (let k = 0; k < 5; k++) part(h, cone(), metal('#e1b12c'), [0.05, 0.14, 0.05], [Math.cos(k / 5 * TAU) * 0.2, 0.43, Math.sin(k / 5 * TAU) * 0.2]);
+        break;
+      default: hat(ctx, kind, c, band);
+    }
+  }
+
+  function crewProp(ctx, kind, o) {
+    const hd = ctx.rightHand; if (!hd) return false;
+    const p = pivot(hd.parent, [hd.position.x, hd.position.y, hd.position.z + 0.08]);
+    ctx.propG = p;
+    const W = wood('#8b5a2b'), steel = metal('#cfd6dc'), gold = metal('#e1b12c');
+    switch (kind) {
+      case 'cutlass': part(p, cyl(), gold, [0.03, 0.14, 0.03], [0, 0, 0]); part(p, tor(), gold, [0.07, 0.07, 0.07], [0, 0.08, 0.02], [0, Math.PI / 2, 0]);
+        part(p, box(), steel, [0.05, 0.55, 0.012], [0.03, 0.38, 0], [0, 0, -0.12]); break;
+      case 'sword': part(p, cyl(), mat('#3b2a1a'), [0.03, 0.16, 0.03], [0, 0, 0]); part(p, box(), gold, [0.24, 0.04, 0.05], [0, 0.09, 0]);
+        part(p, box(), steel, [0.055, 0.75, 0.015], [0, 0.48, 0]); part(p, cone(), steel, [0.04, 0.08, 0.01], [0, 0.89, 0]); break;
+      case 'club': part(p, cone(), W, [0.13, 0.7, 0.13], [0, 0.3, 0], [Math.PI, 0, 0]); for (let i = 0; i < 4; i++) part(p, cone(), gloss('#f7f2e0'), [0.03, 0.08, 0.03], [Math.cos(i * 1.6) * 0.11, 0.5, Math.sin(i * 1.6) * 0.11], [Math.sin(i * 1.6) * 1.3, 0, -Math.cos(i * 1.6) * 1.3]); break;
+      case 'axe': part(p, cyl(), W, [0.025, 0.8, 0.025], [0, 0.25, 0]); part(p, cyl(), steel, [0.18, 0.02, 0.18], [0.1, 0.55, 0], [Math.PI / 2, 0, 0]); break;
+      case 'hammer': part(p, cyl(), W, [0.03, 0.7, 0.03], [0, 0.2, 0]); part(p, box(), metal('#7f8c8d'), [0.3, 0.16, 0.16], [0, 0.58, 0]); break;
+      case 'spear': part(p, cyl(), W, [0.022, 1.3, 0.022], [0, 0.2, 0]); part(p, cone(), steel, [0.05, 0.2, 0.05], [0, 0.94, 0]); break;
+      case 'trident': case 'harpoon': part(p, cyl(), W, [0.022, 1.2, 0.022], [0, 0.2, 0]);
+        if (kind === 'trident') { for (const s of [-1, 0, 1]) part(p, cone(), gold, [0.025, 0.16, 0.025], [s * 0.08, 0.92, 0]); part(p, box(), gold, [0.2, 0.03, 0.03], [0, 0.82, 0]); }
+        else { part(p, cone(), steel, [0.05, 0.2, 0.05], [0, 0.9, 0]); for (const s of [-1, 1]) part(p, cone(), steel, [0.02, 0.08, 0.02], [s * 0.04, 0.8, 0], [0, 0, s * 2.6]); }
+        break;
+      case 'wand': part(p, cyl(), mat('#2b1d12'), [0.016, 0.42, 0.016], [0, 0.17, 0.02]); part(p, OCTA(), glow(o.wandC || '#fff36b', 2.4), [0.07, 0.07, 0.03], [0, 0.42, 0.02]); break;
+      case 'orbstaff': part(p, cyl(), W, [0.025, 1.3, 0.025], [0, 0.15, 0]); part(p, sph(), glow(o.wandC || '#7fdfff', 2.2), [0.13, 0.13, 0.13], [0, 0.88, 0]);
+        part(p, tor(), gold, [0.1, 0.1, 0.1], [0, 0.82, 0], [Math.PI / 2, 0, 0]); break;
+      case 'lasso': part(p, tor(), mat('#c8a46a'), [0.28, 0.28, 0.4], [0, 0.4, 0], [Math.PI / 2, 0, 0]); part(p, cyl(), mat('#c8a46a'), [0.012, 0.3, 0.012], [0, 0.15, 0]); break;
+      case 'shuriken': for (let k = 0; k < 4; k++) part(p, cone(), steel, [0.04, 0.12, 0.012], [Math.cos(k * TAU / 4) * 0.07, 0.12 + Math.sin(k * TAU / 4) * 0.07, 0.03], [0, 0, k * TAU / 4 - Math.PI / 2]); part(p, cyl(), mat('#333'), [0.035, 0.02, 0.035], [0, 0.12, 0.03], [Math.PI / 2, 0, 0]); break;
+      case 'raygun': part(p, box(), metal('#c0c0c0'), [0.08, 0.1, 0.2], [0, 0.03, 0.06]); part(p, cyl(), metal('#c0c0c0'), [0.03, 0.18, 0.03], [0, 0.05, 0.22], [Math.PI / 2, 0, 0]);
+        for (let i = 0; i < 3; i++) part(p, tor(), glow('#7dff8a', 1.6), [0.045, 0.045, 0.045], [0, 0.05, 0.18 + i * 0.05]); part(p, sph(), glow('#7dff8a', 2.4), [0.035, 0.035, 0.035], [0, 0.05, 0.32]); break;
+      case 'rollingpin': part(p, cyl(), wood('#d9a066'), [0.07, 0.42, 0.07], [0, 0.12, 0.04], [0, 0, Math.PI / 2]); for (const s of [-1, 1]) part(p, cyl(), W, [0.025, 0.12, 0.025], [s * 0.27, 0.12, 0.04], [0, 0, Math.PI / 2]); break;
+      case 'pan': part(p, cyl(), mat('#1b1b1b'), [0.025, 0.28, 0.025], [0, 0.15, 0]); part(p, cyl(), mat('#2b2b2b', { metalness: 0.5, roughness: 0.4 }), [0.2, 0.04, 0.2], [0, 0.42, 0.05], [1.2, 0, 0]);
+        part(p, sph(), mat('#ffd34d'), [0.07, 0.02, 0.07], [0, 0.44, 0.08], [1.2, 0, 0]); break;   // fried egg
+      case 'cleaver': part(p, cyl(), mat('#3b2a1a'), [0.03, 0.16, 0.03], [0, 0, 0]); part(p, box(), steel, [0.22, 0.2, 0.012], [0.07, 0.17, 0]); break;
+      case 'ladle': part(p, cyl(), steel, [0.015, 0.5, 0.015], [0, 0.2, 0]); part(p, sph(), steel, [0.09, 0.06, 0.09], [0, 0.47, 0.03]); break;
+      case 'flask': part(p, sph(), glass('#bfffcf', 0.55), [0.11, 0.11, 0.11], [0, 0.08, 0.04]); part(p, sph(), glow(o.flaskC || '#7dff8a', 1.8), [0.085, 0.07, 0.085], [0, 0.06, 0.04]);
+        part(p, cyl(), glass('#bfffcf', 0.55), [0.035, 0.12, 0.035], [0, 0.22, 0.04]); part(p, cyl(), mat('#7a5a2c'), [0.04, 0.04, 0.04], [0, 0.3, 0.04]); break;
+      case 'brainjar': part(p, cyl(), glass('#c7f7ff', 0.4), [0.14, 0.24, 0.14], [0, 0.14, 0.04]); part(p, sph(), mat('#f5a3b5'), [0.1, 0.08, 0.09], [0, 0.13, 0.04]);
+        part(p, cyl(), metal('#7f8c8d'), [0.15, 0.04, 0.15], [0, 0.27, 0.04]); break;
+      case 'net': part(p, cyl(), W, [0.02, 0.7, 0.02], [0, 0.25, 0]); part(p, tor(), mat('#7a5a2c'), [0.18, 0.18, 0.18], [0, 0.72, 0], [0.3, 0, 0]);
+        part(p, cone(), mat('#f4f1e8', { transparent: true, opacity: 0.6, side: T.DoubleSide }), [0.17, 0.3, 0.17], [0, 0.6, -0.05], [Math.PI + 0.3, 0, 0]); break;
+      case 'machete': part(p, cyl(), mat('#3b2a1a'), [0.03, 0.14, 0.03], [0, 0, 0]); part(p, box(), steel, [0.08, 0.5, 0.012], [0, 0.34, 0], [0, 0, 0.08]); break;
+      case 'lantern': part(p, cyl(), mat('#2b2b2b'), [0.012, 0.12, 0.012], [0, 0.0, 0.03]); part(p, box(), metal('#5d4a2a'), [0.13, 0.18, 0.13], [0, -0.14, 0.03]);
+        part(p, sph(), glow(o.lampC || '#ffcf5a', 2.2), [0.06, 0.08, 0.06], [0, -0.14, 0.03]); break;
+      case 'shovel': part(p, cyl(), W, [0.022, 0.8, 0.022], [0, 0.2, 0]); part(p, box(), steel, [0.16, 0.2, 0.02], [0, 0.66, 0]); break;
+      case 'pickaxe': part(p, cyl(), W, [0.022, 0.7, 0.022], [0, 0.2, 0]); part(p, geo('pickG', () => new T.TorusGeometry(0.22, 0.03, 6, 12, Math.PI)), steel, [1, 1, 1], [0, 0.48, 0]); break;
+      case 'mallet': part(p, cyl(), wood('#f1c40f'), [0.03, 0.6, 0.03], [0, 0.22, 0]); part(p, cyl(), mat('#e74c3c'), [0.17, 0.32, 0.17], [0, 0.6, 0], [0, 0, Math.PI / 2]);
+        for (const s of [-1, 1]) part(p, cyl(), mat('#ffffff'), [0.175, 0.04, 0.175], [s * 0.12, 0.6, 0], [0, 0, Math.PI / 2]); break;
+      case 'balloon': part(p, cyl(), mat('#eeeeee'), [0.004, 0.6, 0.004], [0, 0.3, 0]); part(p, sph(), gloss(o.balloonC || '#e84393'), [0.16, 0.2, 0.16], [0, 0.75, 0]).castShadow = true; break;
+      case 'pie': part(p, cyl(), wood('#d9a066'), [0.14, 0.04, 0.14], [0, 0.06, 0.06]); part(p, sph(), mat('#ffffff'), [0.13, 0.06, 0.13], [0, 0.09, 0.06]); part(p, sph(), glow('#ff4d4d', 1.2), [0.025, 0.025, 0.025], [0, 0.15, 0.06]); break;
+      case 'flag': part(p, cyl(), metal('#bdc3c7'), [0.015, 1.0, 0.015], [0, 0.3, 0]); part(p, box(), fabric(o.flagC || '#e74c3c'), [0.02, 0.22, 0.34], [0, 0.66, -0.17]); break;
+      case 'goblet': part(p, cyl(), metal('#c0c0c0'), [0.012, 0.1, 0.012], [0, 0.05, 0.03]); part(p, cone(), metal('#c0c0c0'), [0.07, 0.1, 0.07], [0, 0.14, 0.03], [Math.PI, 0, 0]); part(p, cyl(), mat('#7f0000'), [0.06, 0.01, 0.06], [0, 0.18, 0.03]); break;
+      case 'mic': part(p, cyl(), mat('#1b1b1b'), [0.025, 0.18, 0.025], [0, 0.06, 0.03]); part(p, sph(), metal('#bdc3c7'), [0.055, 0.055, 0.055], [0, 0.18, 0.03]); break;
+      case 'discoball': part(p, cyl(), mat('#eeeeee'), [0.006, 0.2, 0.006], [0, 0.1, 0]); part(p, sph(), metal('#e8ecf2'), [0.19, 0.19, 0.19], [0, 0.38, 0]).castShadow = true;
+        for (let i = 0; i < 6; i++) ctx.detail.push(part(p, box(), glow(['#ff6bcb', '#7fdfff', '#fff36b'][i % 3], 2), [0.04, 0.04, 0.01], [Math.cos(i) * 0.15, 0.38 + Math.sin(i * 2) * 0.1, Math.sin(i) * 0.15])); break;
+      case 'banana': part(p, geo('banG', () => new T.TorusGeometry(0.14, 0.035, 6, 12, Math.PI * 0.8)), mat('#f7d54a'), [1, 1, 1], [0, 0.12, 0.04], [0, 0, 0.6]); break;
+      default: return false;
+    }
+    return true;
+  }
+
+  // add-ons that sit on the body rather than in the hand
+  function crewExtras(ctx, o) {
+    const rig = ctx.rig, h = ctx.head, wide = o.wide || 1;
+    if (o.eyepatch) { part(h, disc(), mat('#111'), [0.075, 0.4, 0.075], [0.11, 0.06, 0.3], [Math.PI / 2, 0, 0]); part(h, cyl(), mat('#111'), [0.31, 0.02, 0.31], [0, 0.12, 0], [0.25, 0, 0.1]); }
+    if (o.shades) { for (const s of [-1, 1]) part(h, box(), gloss('#111'), [0.13, 0.08, 0.03], [s * 0.11, 0.06, 0.31]); part(h, box(), gloss('#111'), [0.08, 0.02, 0.02], [0, 0.08, 0.31]); }
+    if (o.bowtie) for (const s of [-1, 1]) part(rig, cone(), gloss(o.bowtie), [0.07, 0.09, 0.05], [s * 0.06, 1.68, 0.2], [0, 0, s * Math.PI / 2]);
+    if (o.scarf) { part(rig, tor(), fabric(o.scarf), [0.2, 0.2, 0.3], [0, 1.72, 0], [Math.PI / 2, 0, 0]); part(rig, box(), fabric(o.scarf), [0.08, 0.3, 0.03], [0.1, 1.55, 0.22], [0, 0, 0.15]); }
+    if (o.apron) part(rig, box(), fabric(o.apron), [0.4 * wide, 0.6, 0.03], [0, 1.05, 0.25]);
+    if (o.chestplate) part(rig, sph(), metal(o.chestplate), [0.33 * wide, 0.27, 0.27], [0, 1.37, 0.03]).castShadow = true;
+    if (o.bandolier) { part(rig, box(), mat('#5d4037'), [0.07, 0.8, 0.03], [0, 1.35, 0.24], [0, 0, 0.7]); for (let i = 0; i < 4; i++) ctx.detail.push(part(rig, cyl(), metal('#e1b12c'), [0.02, 0.07, 0.02], [-0.18 + i * 0.12, 1.2 + i * 0.1, 0.26], [0, 0, 0.7])); }
+    if (o.badge) part(rig, OCTA(), metal('#e1b12c'), [0.07, 0.07, 0.02], [-0.14, 1.45, 0.25]);
+    if (o.championBelt) { part(rig, cyl(), mat('#1b1b1b'), [0.33 * wide, 0.1, 0.26], [0, 1.06, 0]); part(rig, sph(), metal('#e1b12c'), [0.16, 0.11, 0.05], [0, 1.06, 0.25]); }
+    if (o.tanks) for (const s of [-1, 1]) part(rig, cap(), gloss(o.tanks), [0.11, 0.17, 0.11], [s * 0.12, 1.4, -0.3]).castShadow = true;
+    if (o.parrot) {
+      const b = pivot(rig, [0.38 * wide, 1.75, 0]); ctx.parrot = b;
+      part(b, sph(), mat('#2ecc71'), [0.1, 0.14, 0.1], [0, 0.1, 0]).castShadow = true;
+      part(b, sph(), mat('#e74c3c'), [0.08, 0.08, 0.08], [0, 0.25, 0.03]);
+      part(b, cone(), mat('#f1c40f'), [0.03, 0.08, 0.03], [0, 0.23, 0.12], [Math.PI / 2, 0, 0]);
+      part(b, box(), mat('#2e86de'), [0.06, 0.02, 0.2], [0, 0.02, -0.12], [0.6, 0, 0]);
+      for (const s of [-1, 1]) ctx.detail.push(part(b, sph(), gloss('#111'), [0.018, 0.018, 0.018], [s * 0.05, 0.28, 0.07]));
+    }
+    if (o.shield) {
+      const sh = pivot(ctx.arms[0], [-0.1, -0.35, 0]);
+      part(sh, cyl(), fabric(o.shield[0]), [0.3, 0.04, 0.3], [0, 0, 0], [0, 0, Math.PI / 2]).castShadow = true;
+      part(sh, cyl(), metal(o.shield[1] || '#d4a017'), [0.31, 0.03, 0.31], [0.005, 0, 0], [0, 0, Math.PI / 2]);
+      part(sh, cyl(), fabric(o.shield[0]), [0.27, 0.035, 0.27], [-0.008, 0, 0], [0, 0, Math.PI / 2]);
+      part(sh, sph(), metal(o.shield[1] || '#d4a017'), [0.07, 0.07, 0.07], [-0.03, 0, 0]);
+    }
+    if (o.furry) for (let i = 0; i < 6; i++) part(rig, cone(), ctx.furM, [0.08, 0.16, 0.06], [Math.cos(i * 1.1) * 0.3 * wide, 1.05 + (i % 3) * 0.2, Math.sin(i * 1.1) * 0.24], [Math.PI, 0, Math.cos(i * 1.1) * 0.6]);
+    if (o.ballchain) { part(rig, cyl(), metal('#5d6d7e'), [0.012, 0.5, 0.012], [0.15, 0.25, -0.2], [0.9, 0, 0]); part(rig, sph(), metal('#2c3e50'), [0.16, 0.16, 0.16], [0.15, 0.1, -0.55]).castShadow = true; }
+  }
+
+  // Ghost: a floating sheet with stubby arms. Hidden leg pivots keep the shared walk code happy.
+  function ghost(ctx, o) {
+    const rig = ctx.rig, sheet = ctx.skinM;
+    sheet.transparent = true; sheet.opacity = 0.9;
+    part(rig, geo('ghostG', () => new T.CylinderGeometry(0.36, 0.62, 1.5, 18, 1, true)), sheet, [1, 1, 1], [0, 0.95, 0]).castShadow = true;
+    part(rig, sph(), sheet, [0.4, 0.42, 0.4], [0, 1.72, 0]).castShadow = true;
+    for (let i = 0; i < 9; i++) part(rig, sph(), sheet, [0.13, 0.13, 0.13], [Math.cos(i / 9 * TAU) * 0.58, 0.22, Math.sin(i / 9 * TAU) * 0.58]);
+    const head = pivot(rig, [0, 1.72, 0]);
+    ctx.head = head;
+    eyes(ctx, head, { y: 0.06, z: 0.33, sp: 0.13, size: 0.1, iris: '#111', tall: 1.4 });
+    ctx.detail.push(part(head, sph(), mat('#1b1b2a'), [0.08, 0.1, 0.03], [0, -0.16, 0.37]));
+    const legs = [pivot(rig, [-0.1, 0.9, 0]), pivot(rig, [0.1, 0.9, 0])], arms = [];
+    for (const s of [-1, 1]) {
+      const sh = pivot(rig, [s * 0.42, 1.45, 0]);
+      part(sh, cap(), sheet, [0.09, 0.18, 0.09], [0, -0.22, 0]);
+      const hand = part(sh, sph(), sheet, [0.1, 0.1, 0.1], [0, -0.45, 0.02]);
+      arms.push(sh); if (s === 1) ctx.rightHand = hand;
+    }
+    ctx.ghostTail = rig.children[0];
+    return { legs, arms };
+  }
+
+  // Dino rider: a stomping raptor with a little rider in the saddle; the rider wears the hat.
+  function dinoRider(ctx, o) {
+    const rig = ctx.rig;
+    const hide = mat(o.dinoC || '#58a55c', { roughness: 0.6 }).clone(); ctx.flash.push(hide);
+    const belly = mat(o.dinoBelly || '#d4e6a5', { roughness: 0.7 });
+    const big = o.dinoBig ? 1.2 : 1;
+    const body = pivot(rig, [0, 1.0 * big, 0]);
+    part(body, sph(), hide, [0.42 * big, 0.38 * big, 0.68 * big], [0, 0, 0]).castShadow = true;
+    part(body, sph(), belly, [0.34 * big, 0.28 * big, 0.55 * big], [0, -0.12 * big, 0.06]);
+    part(body, cone(), hide, [0.2 * big, 0.9 * big, 0.2 * big], [0, 0.05, -0.85 * big], [-Math.PI / 2 - 0.15, 0, 0]).castShadow = true;   // tail
+    for (let i = 0; i < 5; i++) part(body, cone(), mat(o.dinoBelly || '#d4e6a5'), [0.05, 0.12, 0.08], [0, 0.36 * big - i * 0.02, -0.25 - i * 0.18], [-0.3, 0, 0]);   // back spikes
+    const neck = pivot(body, [0, 0.25 * big, 0.5 * big]);
+    part(neck, cap(), hide, [0.15 * big, 0.2 * big, 0.15 * big], [0, 0.15, 0.1], [0.7, 0, 0]);
+    const dh = pivot(neck, [0, 0.38 * big, 0.3 * big]);
+    part(dh, sph(), hide, [0.22 * big, 0.2 * big, 0.36 * big], [0, 0, 0.1]).castShadow = true;
+    part(dh, sph(), belly, [0.17 * big, 0.08 * big, 0.3 * big], [0, -0.12 * big, 0.14]);
+    for (let i = 0; i < 6; i++) ctx.detail.push(part(dh, cone(), gloss('#ffffff'), [0.02, 0.05, 0.02], [(i % 2 ? 1 : -1) * 0.1 * big, -0.08 * big, 0.1 + Math.floor(i / 2) * 0.09], [Math.PI, 0, 0]));
+    for (const s of [-1, 1]) {
+      ctx.eyes.push(part(dh, sph(), gloss('#fffbe0'), [0.06, 0.07, 0.05], [s * 0.13 * big, 0.08 * big, 0.18]));
+      ctx.detail.push(part(dh, sph(), gloss('#111'), [0.03, 0.045, 0.03], [s * 0.15 * big, 0.08 * big, 0.21]));
+    }
+    ctx.dinoHead = neck;
+    const legs = [];
+    for (const s of [-1, 1]) {
+      const hip = pivot(rig, [s * 0.3 * big, 0.95 * big, -0.05]);
+      part(hip, cap(), hide, [0.16 * big, 0.3 * big, 0.16 * big], [0, -0.35 * big, 0]).castShadow = true;
+      part(hip, sph(), hide, [0.16 * big, 0.08, 0.28 * big], [0, -0.87 * big, 0.1]);
+      for (let k = -1; k <= 1; k++) ctx.detail.push(part(hip, cone(), gloss('#f7f2e0'), [0.025, 0.07, 0.025], [k * 0.07, -0.88 * big, 0.36 * big], [Math.PI / 2, 0, 0]));
+      legs.push(hip);
+    }
+    // the rider
+    const seat = pivot(rig, [0, 1.38 * big, -0.05]);
+    part(seat, cyl(), mat('#7a4a2a'), [0.3, 0.06, 0.34], [0, 0, 0]);
+    const top = o.pattern ? patterned(o.top, o.pattern[0], o.pattern[1]) : fabric(o.top || '#b07d3a');
+    part(seat, cap(), top, [0.22, 0.16, 0.17], [0, 0.4, 0]).castShadow = true;
+    for (const s of [-1, 1]) part(seat, cap(), fabric(o.bottom || '#5d4037'), [0.08, 0.16, 0.08], [s * 0.22, 0.02, 0.12], [1.2, 0, s * 0.3]);
+    const arms = [];
+    for (const s of [-1, 1]) {
+      const sh = pivot(seat, [s * 0.26, 0.55, 0]);
+      part(sh, cap(), top, [0.06, 0.15, 0.06], [0, -0.18, 0]);
+      const hand = part(sh, sph(), ctx.skinM, [0.07, 0.07, 0.07], [0, -0.38, 0.02]);
+      arms.push(sh); if (s === 1) ctx.rightHand = hand;
+    }
+    part(seat, cyl(), ctx.skinM, [0.07, 0.1, 0.07], [0, 0.73, 0]);
+    const head = pivot(seat, [0, 0.98, 0]); head.scale.setScalar(1.15);
+    ctx.head = head;
+    ctx.sackAt = [0, 1.55 * big, -0.55];
+    return { legs, arms };
+  }
+
+  // Leader marker: a small spinning gold crown floating above the head.
+  function leaderCrown(ctx) {
+    const c = pivot(ctx.rig, [0, 3.25, 0]);
+    part(c, cyl(), glow('#ffd34d', 1.6), [0.2, 0.08, 0.2]);
+    for (let k = 0; k < 5; k++) part(c, cone(), glow('#ffd34d', 1.6), [0.05, 0.13, 0.05], [Math.cos(k / 5 * TAU) * 0.19, 0.1, Math.sin(k / 5 * TAU) * 0.19]);
+    ctx.crown = c;
+  }
+
+  // How each looter moves (spec.gait) and the little move it does now and then (spec.quirk).
   const GAIT = {
     sneak: { f: 10, step: 0.45, bob: 0.03, lean: 0.28, crouch: 0.12, sway: 0, arms: 0.25 },
     scurry: { f: 15, step: 0.6, bob: 0.07, lean: 0.2, crouch: 0.04, sway: 0.04, arms: 0.7 },
@@ -440,61 +762,65 @@ window.PTD = window.PTD || {};
     strut: { f: 7.5, step: 0.6, bob: 0.06, lean: -0.1, crouch: 0, sway: 0.05, arms: 0.2 },
     glide: { f: 4, step: 0, bob: 0.08, lean: 0.05, crouch: -0.06, sway: 0.06, arms: 0.15 },
     march: { f: 8, step: 0.6, bob: 0.04, lean: 0, crouch: 0, sway: 0, arms: 0.6, snap: true },
-  };
-  const STYLE = {
-    'Sneak Mouse': ['sneak', 'look'], 'Alley Rat': ['scurry', 'look'], 'Sock Goblin': ['scurry', 'laugh'], 'Rag Raccoon': ['scurry', 'look'],
-    'Jackal Pup': ['scurry', 'hop'], 'Pocket Weasel': ['sneak', 'look'], 'Brute Twins': ['stomp', 'flex'], 'Card Shark': ['swagger', 'coin'],
-    'Iron Knuckle': ['stomp', 'flex'], 'Velvet Fox': ['swagger', 'laugh'], 'Masked Bandit': ['sneak', 'look'], 'Fortune Teller': ['glide', 'raise'],
-    'Clockwork Fixer': ['march', 'raise'], 'Heartbreaker': ['swagger', 'wave'], 'Desperado': ['strut', 'look'], 'Loan Shark': ['swagger', 'coin'],
-    'Snake-Oil Seller': ['strut', 'shake'], 'Shell Gamer': ['swagger', 'shake'], 'Silver Tongue': ['glide', 'laugh'], 'Vault Cracker': ['sneak', 'look'],
-    'Tycoon': ['strut', 'twirl'], 'Tax Collector': ['strut', 'raise'],
+    shamble: { f: 4.5, step: 0.35, bob: 0.04, lean: 0.18, crouch: 0.06, sway: 0.2, arms: 0.1 },
+    waddle: { f: 12, step: 0.3, bob: 0.06, lean: 0, crouch: 0.06, sway: 0.25, arms: 0.4 },
+    bounce: { f: 7, step: 0.5, bob: 0.24, lean: 0, crouch: 0, sway: 0.05, arms: 0.6 },
   };
 
-  function build(def) {
-    const spec = SPECS[def.name] || { body: 'biped', head: 'human', skin: '#e0ac8a', top: (def.look || ['#888'])[0] };
+  // spec for a crew member: base look merged with the member's (or leader's) overrides
+  function crewSpec(def, variant) {
+    const crew = PTD.CREWS && PTD.CREWS[def.theme];
+    if (!crew) return null;
+    const m = variant === 3 ? crew.leader : crew.crew[(variant || 0) % crew.crew.length];
+    return Object.assign({ body: 'biped', head: 'human', gait: 'strut', quirk: 'look' }, crew.base, m);
+  }
+
+  function build(def, variant) {
+    const spec = crewSpec(def, variant) || { body: 'biped', head: 'human', skin: '#e0ac8a', top: (def.look || ['#888'])[0], gait: 'strut', quirk: 'look' };
     const rig = new T.Group();
     const ctx = { rig, spec, detail: [], flash: [], eyes: [], ears: [] };
     const base = spec.fur || spec.skin || spec.shell || '#e0ac8a';
-    ctx.skinM = skin(base).clone(); ctx.flash.push(ctx.skinM);
+    ctx.skinM = (spec.wraps ? patterned(base, 'wraps', spec.wrapC || '#b8a67a') : skin(base)).clone(); ctx.flash.push(ctx.skinM);
     ctx.furM = mat(spec.fur || base, { roughness: 0.95 }).clone(); ctx.flash.push(ctx.furM);
     if (spec.fur) ctx.skinM = ctx.furM;
     let parts = {};
-    const model = MODELS[modelKey(def.name)];
-    if (model) parts = fromModel(ctx, model);
-    else if (spec.body === 'crab') parts = crab(ctx, spec.shell);
-    else if (spec.body === 'moth') parts = moth(ctx);
+    const humanoid = spec.body === 'biped' || spec.body === 'ghost' || spec.body === 'dino';
+    if (spec.body === 'crab') parts = crab(ctx, spec.shell);
     else if (spec.body === 'snake') parts = snake(ctx);
     else {
-      parts = biped(ctx, spec);
+      parts = spec.body === 'ghost' ? ghost(ctx, spec) : spec.body === 'dino' ? dinoRider(ctx, spec) : biped(ctx, spec);
+      ctx.arms = parts.arms;
       const h = ctx.head;
-      if (spec.head === 'rodent') rodentHead(ctx, h, spec);
-      else if (spec.head === 'canine') canineHead(ctx, h, spec);
-      else if (spec.head === 'shark') sharkHead(ctx, h, spec);
-      else if (spec.head === 'goblin') goblinHead(ctx, h, spec);
-      else humanHead(ctx, h, spec);
+      if (spec.body !== 'ghost') {
+        const heads = { rodent: rodentHead, canine: canineHead, shark: sharkHead, goblin: goblinHead, alien: alienHead, robot: robotHead, zombie: zombieHead,
+          clown: clownHead, vampire: vampireHead, yeti: yetiHead, gnome: gnomeHead, mummy: mummyHead, diver: diverHead };
+        (heads[spec.head] || humanHead)(ctx, h, spec);
+      }
       if (spec.mask) mask(ctx, spec.mask);
       if (spec.faceMask) faceMask(ctx, spec.faceMask);
       if (spec.goggles) goggles(ctx, spec.goggles);
-      if (spec.hat) hat(ctx, spec.hat[0], spec.hat[1], spec.hat[2]);
+      if (spec.hat) crewHat(ctx, spec.hat[0], spec.hat[1], spec.hat[2]);
       if (spec.horns) for (const s of [-1, 1]) part(h, cone(), gloss('#fdfefe'), [0.06, 0.18, 0.06], [s * 0.2, 0.3, 0], [0, 0, -s * 0.5]);
-      if (spec.hearts) for (const s of [-1, 1]) part(h, sph(), glow('#ff4d94', 1.6), [0.07, 0.06, 0.03], [s * 0.11, 0.06, 0.31]);
       if (spec.monocle) ctx.detail.push(part(h, tor(), metal('#e1b12c'), [0.06, 0.06, 0.06], [0.11, 0.06, 0.3]));
-      if (spec.lamp) { part(h, cyl(), glow('#fff6c4', 3), [0.06, 0.05, 0.06], [0, 0.22, 0.28], [Math.PI / 2, 0, 0]); const l = new T.SpotLight(0xfff0c0, 0.8, 600, 0.5, 0.6, 0); l.position.set(0, 0.22, 0.3); l.target.position.set(0, -1.5, 2.5); h.add(l); h.add(l.target); }
-      if (spec.gear) { const g = part(rig, tor(), metal('#b08d57'), [0.28, 0.28, 0.4], [0, 1.4, -0.32]); for (let k = 0; k < 8; k++) part(g, box(), metal('#b08d57'), [0.35, 0.35, 0.2], [Math.cos(k / 8 * TAU) * 1.15, Math.sin(k / 8 * TAU) * 1.15, 0], [0, 0, k / 8 * TAU]); ctx.gearObj = g; }
-      if (spec.prop) prop(ctx, spec.prop);
+      crewExtras(ctx, spec);
+      if (spec.prop && !crewProp(ctx, spec.prop, spec)) prop(ctx, spec.prop);
       if (spec.tail) tail(ctx, spec.tail, spec.tailC || base);
-      if (!spec.gear) sack(ctx);
+      if (!spec.noSack && !spec.tanks) sack(ctx, ctx.sackAt);
     }
+    if (spec.scale) rig.scale.setScalar(spec.scale);
+    if (variant === 3) leaderCrown(ctx);
 
-    const [gaitName, quirkName] = STYLE[def.name] || ['strut', 'look'];
-    const gait = GAIT[spec.robe ? 'glide' : gaitName];
-    const armHold = spec.body === 'biped' ? -2.5 : 0;   // left arm reaches back over the shoulder to hold the sack
+    const gaitName = spec.gait, quirkName = spec.quirk;
+    const gait = GAIT[spec.robe || spec.body === 'ghost' ? 'glide' : gaitName] || GAIT.strut;
+    // left arm reaches back over the shoulder to hold the sack; shamblers reach forward instead
+    const armHold = spec.armsFwd ? -1.45 : spec.body === 'dino' ? -1.1 : humanoid && !spec.noSack && !spec.tanks ? -2.5 : -0.2;
+    const baseScale = rig.scale.x;
     const eyeY = ctx.eyes.map(e => e.scale.y);
     const earZ = ctx.ears.map(e => e.rotation.z);
     const sackY = ctx.sackG ? ctx.sackG.position.y : 0;
     // every looter also gets one random extra party trick
-    const small = gaitName === 'scurry' || gaitName === 'sneak';
-    const extras = small ? ['dance', 'juggle', 'trip', 'cartwheel'] : ['dance', 'juggle', 'trip', 'count'];
+    const small = gaitName === 'scurry' || gaitName === 'sneak' || gaitName === 'bounce';
+    const extras = spec.body === 'dino' ? ['juggle', 'count'] : spec.body === 'ghost' ? ['dance', 'juggle'] : small ? ['dance', 'juggle', 'trip', 'cartwheel'] : ['dance', 'juggle', 'trip', 'count'];
     const extra = extras[Math.floor(Math.random() * extras.length)];
     let quirk = 0, quirkDur = 1.2, active = quirkName, quirkT = 2 + Math.random() * 5, blinkT = 1 + Math.random() * 3, stars = null, coins = null;
     function juggleCoins(on, t) {
@@ -511,7 +837,7 @@ window.PTD = window.PTD || {};
       if (on && !stars) {
         stars = new T.Group();
         for (let k = 0; k < 3; k++) { const st = new T.Mesh(geo('star', () => new T.OctahedronGeometry(0.07, 0)), glow('#ffe066', 2.4)); st.position.set(Math.cos(k / 3 * TAU) * 0.35, 0, Math.sin(k / 3 * TAU) * 0.35); stars.add(st); }
-        stars.position.y = spec.body === 'biped' ? 2.45 : 1.6;
+        stars.position.y = humanoid ? 2.45 : 1.6;
         rig.add(stars);
       }
       if (stars) { stars.visible = on; if (on) stars.rotation.y = t * 6; }
@@ -538,14 +864,14 @@ window.PTD = window.PTD || {};
         const legAmp = gait.step * (st.stun ? 0 : 1);
         parts.legs[0].rotation.x = sw * legAmp; parts.legs[1].rotation.x = -sw * legAmp;
         parts.arms[0].rotation.x = armHold + sw * 0.1; parts.arms[0].rotation.z = -0.25;
-        let rArm = spec.prop ? -0.6 + sw * 0.15 : -sw * gait.arms;
+        let rArm = spec.armsFwd ? -1.45 + sw * 0.12 : spec.prop ? -0.6 + sw * 0.15 : -sw * gait.arms;
         let rArmZ = 0;
         const bob = moving ? Math.abs(Math.sin(ph)) * gait.bob : Math.sin(t * 2) * 0.01;
         rig.position.y = bob - gait.crouch + (gait === GAIT.glide ? 0.06 + Math.sin(t * 2.2) * 0.05 : 0);
         rig.rotation.x = gait.lean - (st.hit || 0) * 0.45;                    // lean, or flinch back when hit
         rig.rotation.z = moving ? Math.sin(ph * 0.5) * gait.sway : 0;
         const squash = 1 - (st.hit || 0) * 0.12 + (moving ? Math.abs(Math.sin(ph)) * 0.03 : 0);
-        rig.scale.set(1 / Math.sqrt(squash), squash, 1 / Math.sqrt(squash));
+        rig.scale.set(baseScale / Math.sqrt(squash), baseScale * squash, baseScale / Math.sqrt(squash));
         if (ctx.head) { ctx.head.rotation.z = sw * 0.06; ctx.head.rotation.y = 0; ctx.head.rotation.x = 0; }
         switch (active) {
           case 'dance': rig.rotation.y = prog * TAU * 2 * (q > 0 ? 1 : 0); parts.arms[0].rotation.x = armHold * (1 - q) - q * 2.8; rArmZ = Math.sin(t * 16) * 0.5 * q;
@@ -580,6 +906,10 @@ window.PTD = window.PTD || {};
         else rig.position.x = 0;
       }
       if (ctx.tail) ctx.tail.rotation.y = Math.sin(t * (moving ? 9 : 4)) * 0.5;
+      if (ctx.dinoHead) ctx.dinoHead.rotation.x = (moving ? Math.sin(ph) * 0.12 : Math.sin(t * 1.5) * 0.05) - q * 0.6;   // head bob, roar on quirk
+      if (ctx.ghostTail) ctx.ghostTail.rotation.y = Math.sin(t * 3) * 0.15;
+      if (ctx.parrot) ctx.parrot.rotation.y = Math.sin(t * 2.3) * 0.6;
+      if (ctx.crown) { ctx.crown.rotation.y = t * 2; ctx.crown.position.y = 3.25 + Math.sin(t * 3) * 0.06; }
       if (ctx.gearObj) ctx.gearObj.rotation.z += dt * 3 * (1 + q * 4);
       if (parts.crabLegs) {
         parts.crabLegs.forEach((l, i) => { l.rotation.x = Math.sin(ph * 1.6 + i * 1.3) * 0.5; });
@@ -911,5 +1241,5 @@ window.PTD = window.PTD || {};
     return { rig, anim, flash: flash.slice(0, 6), head, faceMat, face, palms, stage };
   }
 
-  PTD.Looters3D = { build, buildBoss, SPECS, loadModels, MODELS };
+  PTD.Looters3D = { build, buildBoss, loadModels, MODELS };
 })();

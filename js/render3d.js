@@ -601,9 +601,10 @@ window.PTD = window.PTD || {};
     makeLooter(c) {
       const R = c.radius;
       const root = new T.Group();
-      const ch = PTD.Looters3D.build(c.def);
-      const holder = new T.Group(); holder.scale.setScalar(R * 1.55); holder.add(ch.rig); root.add(holder);
-      this.addHealthBar(root, R * 3.6, 100);
+      const ch = PTD.Looters3D.build(c.def, c.variant || 0);
+      const S = R * 2.5 * (c.variant === 3 ? 1.3 : 1);   // crew leaders walk in a size bigger
+      const holder = new T.Group(); holder.scale.setScalar(S); holder.add(ch.rig); root.add(holder);
+      this.addHealthBar(root, S * 2.4, c.variant === 3 ? 130 : 100);
       root.userData = { rig: holder, anim: ch.anim, flash: ch.flash, detail: ch.detail, lastHp: c.hp, hitT: 0 };
       this.scene.add(root);
       return root;
