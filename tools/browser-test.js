@@ -5,7 +5,7 @@ const fs = require('fs'), path = require('path');
 const CHROME = 'C:/Program Files/Google/Chrome/Application/chrome.exe';
 const out = path.resolve(process.argv[2] || 'shots');
 fs.mkdirSync(out, { recursive: true });
-const url = 'file:///' + path.resolve(__dirname, '..', 'index.html').split(path.sep).join('/');
+const url = 'file:///' + path.resolve(__dirname, '..', 'index.html').split(path.sep).join('/') + (process.env.PTD_QS || '');   // e.g. PTD_QS='?test'
 const prof = path.join(out, 'profile');
 const chrome = spawn(CHROME, ['--headless=new', '--remote-debugging-port=9333', '--window-size=1600,900', '--user-data-dir=' + prof, '--autoplay-policy=no-user-gesture-required', 'about:blank']);
 const sleep = ms => new Promise(r => setTimeout(r, ms));

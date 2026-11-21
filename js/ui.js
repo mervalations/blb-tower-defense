@@ -80,6 +80,8 @@
     document.body.classList.toggle('online-client', net instanceof PTD.Net.Client);
     if (start) game.start();
     lastHandSig = '';
+    // ?test in the address shows level-skip buttons (single player or when hosting)
+    $('testbar').classList.toggle('hidden', !/[?&]test(=|&|$)/.test(location.search) || net instanceof PTD.Net.Client);
     A.music.setMood('lounge');
     if (renderer.playIntro) { renderer.playIntro(game.human); banner('BLB Tower Defense', 'Click to skip the fly-in', 3800); }
   }
@@ -376,6 +378,13 @@
   if (settings.sound) A.setState(settings.sound);
   showSound(A.state);
   $('btn-center').onclick = () => { if (game) renderer.fitPlayer(game.human); };
+
+  // ---------- test tools ----------
+  document.querySelectorAll('#testbar [data-lvl]').forEach(b => {
+    b.onclick = () => { if (!game || game.remote) return; game.jumpTo(+b.dataset.lvl); toast('Jumped to the hand before level ' + b.dataset.lvl + '. Press Ready to start it.'); };
+  });
+  $('test-next').onclick = () => { if (game && !game.remote) { game.jumpTo(Math.min(30, game.level + (game.phase === 'hand' ? 2 : 1))); toast('Skipped ahead to level ' + (game.level + 1) + '.'); } };
+  $('test-gold').onclick = () => { if (game && !game.remote) { game.human.gold += 500; A.play('coin'); } };
 
   // ---------- pointer ----------
   const drag = { down: false, button: 0, sx: 0, sy: 0, moved: false, camX: 0, camY: 0 };

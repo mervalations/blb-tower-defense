@@ -175,6 +175,17 @@ PTD.Game = class {
     this.emit('handStart', { round: this.level + 1, def: this.nextLevelDef(), ante });
   }
 
+  // Testing helper: clear the board of looters and deal the hand that leads into `levelNum`.
+  jumpTo(levelNum) {
+    if (this.phase === 'over') return;
+    this.level = Math.max(0, Math.min(PTD.LEVELS.length - 1, levelNum - 1));
+    for (const c of this.creeps) c.alive = false;
+    this.creeps = []; this.shots = [];
+    this.spawned = this.toSpawn = 0;
+    this.beginHand();
+    this.emit('jump', { level: levelNum });
+  }
+
   ready(p) {
     if (this.phase === 'hand') (p || this.human).ready = true;
   }
