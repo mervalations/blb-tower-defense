@@ -275,7 +275,7 @@ window.PTD = window.PTD || {};
       this.ground = new T.Plane(new T.Vector3(0, 1, 0), -FELT_H);   // clicks land on the felt surface
       this.shake = 0; this.flash = 0; this.cine = null;
       this.towerObjs = new Map(); this.creepObjs = new Map(); this.shotObjs = new Map(); this.fxObjs = new Map();
-      this.particles = []; this.frame = 0; this.slowFrames = 0;
+      this.particles = []; this.dying = []; this.frame = 0; this.slowFrames = 0;
       this.quality = (PTD.Renderer3D.quality || 'high');
       this.buildScene();
       this.resize();
@@ -300,7 +300,9 @@ window.PTD = window.PTD || {};
 
       // the table: board texture on felt, mahogany rim, casino carpet far below
       const size = map.size * map.cell;
-      const board = this.boardTex = canvasTex(PTD.Art.boardCanvas(map, g.players, 6).canvas);
+      const bc = PTD.Art.boardCanvas(map, g.players, 6);
+      if (PTD.Scenery3D) PTD.Scenery3D.decorateBoard(bc.canvas.getContext('2d'), bc.px, map, 6);
+      const board = this.boardTex = canvasTex(bc.canvas);
       const top = new T.Mesh(new T.PlaneGeometry(size, size), new T.MeshStandardMaterial({ map: board, roughness: 0.92, metalness: 0, envMapIntensity: 0.15, color: '#a6aaa4' }));
       top.rotation.x = -Math.PI / 2; top.receiveShadow = true;
       S.add(top);
@@ -320,6 +322,7 @@ window.PTD = window.PTD || {};
       this.buildPortals();
       this.buildRoom();
       this.buildDust();
+      this.scenery = PTD.Scenery3D ? PTD.Scenery3D.build(this) : null;
 
       // hover / placement helpers
       this.ghost = new T.Mesh(new T.BoxGeometry(124, 8, 124), new T.MeshBasicMaterial({ color: 0x66ff99, transparent: true, opacity: 0.35, depthWrite: false }));
@@ -667,10 +670,10 @@ window.PTD = window.PTD || {};
         let d = (want - ud.rig.rotation.y + Math.PI * 3) % TAU - Math.PI;
         ud.rig.rotation.y += d * Math.min(1, dt * 10);
         const moving = !(c.wait > 0) && !(c.stunT > 0);
-        ud.anim(t + c.phaseOff, moving, dt);
         if (c.hp < ud.lastHp - 0.5) ud.hitT = 0.12;
         ud.lastHp = c.hp;
         ud.hitT = Math.max(0, ud.hitT - dt);
+        ud.anim(t + c.phaseOff, moving, dt, { speed: c.slowF || 1, hit: ud.hitT / 0.12, stun: c.stunT > 0, slow: c.slowF < 1 });
         const fr = ud.hitT > 0 ? 0.9 : c.slowF < 1 ? 0.05 : 0, fg = ud.hitT > 0 ? 0.9 : c.slowF < 1 ? 0.18 : 0, fb = ud.hitT > 0 ? 0.9 : c.slowF < 1 ? 0.45 : 0;
         for (const m of ud.flash) m.emissive.setRGB(fr, fg, fb);
         if (ud.detail) { const show = this.view.zoom > 0.085; if (ud.detailOn !== show) { ud.detailOn = show; for (const d of ud.detail) d.visible = show; } }
@@ -688,9 +691,20 @@ window.PTD = window.PTD || {};
       for (const [id, o] of this.creepObjs) {
         if (seen.has(id)) continue;
         this.burst(o.position.clone().setY(60), '#fff2c4', 10, 220);
-        this.scene.remove(o);
+        o.children.forEach(ch => { if (ch.isSprite) ch.visible = false; });   // hide the health bar
+        this.dying.push({ o, t: 0 });
         this.creepObjs.delete(id);
       }
+      // defeated looters spin, jump and shrink away
+      this.dying = this.dying.filter(d => {
+        d.t += dt;
+        const k = d.t / 0.55;
+        if (k >= 1) { this.scene.remove(d.o); return false; }
+        d.o.rotation.y += dt * 16;
+        d.o.position.y = Math.sin(k * Math.PI) * 120;
+        d.o.scale.setScalar(Math.max(0.01, 1 - k * k));
+        return true;
+      });
     }
 
     // ------------------------------------------------ shots and effects
@@ -1018,6 +1032,7 @@ window.PTD = window.PTD || {};
         s.scr.material.color.copy(s.base).multiplyScalar(1.2 * k + 0.3);
         s.topLight.material.color.copy(s.base2).multiplyScalar(0.8 + 0.8 * (Math.sin(t * 5 + s.ph) > 0.6 ? 1 : 0));
       }
+      if (this.scenery) this.scenery.update(t, dt);
       this.dust.rotation.y = t * 0.01;
       this.dust.position.y = Math.sin(t * 0.2) * 40;
 

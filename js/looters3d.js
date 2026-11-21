@@ -60,9 +60,9 @@ window.PTD = window.PTD || {};
   function eyes(ctx, head, o) {
     const y = o.y || 0.05, z = o.z || 0.27, sp = o.sp || 0.12, s = o.size || 0.085;
     for (const side of [-1, 1]) {
-      part(head, sph(), gloss('#ffffff'), [s, s * (o.tall || 1.1), s * 0.7], [side * sp, y, z]);
+      ctx.eyes.push(part(head, sph(), gloss('#ffffff'), [s, s * (o.tall || 1.1), s * 0.7], [side * sp, y, z]));
       const iris = part(head, sph(), gloss(o.iris || '#3b2a1a'), [s * 0.62, s * 0.66, s * 0.4], [side * sp, y, z + s * 0.5]);
-      ctx.detail.push(iris);
+      ctx.detail.push(iris); ctx.eyes.push(iris);
       ctx.detail.push(part(head, sph(), gloss('#050505'), [s * 0.32, s * 0.36, s * 0.3], [side * sp, y, z + s * 0.62]));
       ctx.detail.push(part(head, lowSph(), glow('#ffffff', 1.5), [s * 0.12, s * 0.12, s * 0.1], [side * sp + s * 0.2, y + s * 0.25, z + s * 0.72]));
       if (o.brow) ctx.detail.push(part(head, box(), mat(o.brow), [s * 1.6, s * 0.28, s * 0.4], [side * sp, y + s * 1.35, z - 0.01], [0, 0, side * (o.angry ? 0.35 : -0.1)]));
@@ -172,6 +172,7 @@ window.PTD = window.PTD || {};
   // Loot sack slung over the left shoulder.
   function sack(ctx, at, scale) {
     const g = pivot(ctx.rig, at || [-0.05, 1.45, -0.42]);
+    ctx.sackG = g;
     const s = scale || 1;
     const burlap = mat('#c8a46a', { roughness: 0.95 });
     part(g, sph(), burlap, [0.36 * s, 0.4 * s, 0.32 * s]).castShadow = true;
@@ -234,6 +235,7 @@ window.PTD = window.PTD || {};
   function prop(ctx, kind) {
     const hd = ctx.rightHand; if (!hd) return;
     const p = pivot(hd.parent, [hd.position.x, hd.position.y, hd.position.z + 0.08]);
+    ctx.propG = p;
     switch (kind) {
       case 'crystal': part(p, sph(), glow('#c39bff', 2.2), [0.16, 0.16, 0.16], [0, 0.1, 0.06]); part(p, cyl(), metal('#d4a62a'), [0.1, 0.05, 0.1], [0, -0.04, 0.06]);
         { const l = new T.PointLight(0xb388ff, 0.6, 300, 0); l.position.set(0, 0.1, 0.06); p.add(l); } break;
@@ -320,6 +322,7 @@ window.PTD = window.PTD || {};
     const head = pivot(rig, [0, 0.95, 0.32]);
     part(head, sph(), m, [0.26, 0.2, 0.34]).castShadow = true;
     eyes(ctx, head, { y: 0.08, z: 0.2, sp: 0.13, size: 0.06, iris: '#f1c40f', tall: 1.5, brow: '#1d4d32', angry: true });
+    ctx.snakeHead = head;
     for (const s of [-1, 1]) ctx.detail.push(part(head, cone(), gloss('#ffffff'), [0.025, 0.08, 0.025], [s * 0.07, -0.13, 0.26], [Math.PI, 0, 0]));
     const tongue = part(head, box(), gloss('#e74c3c'), [0.03, 0.01, 0.2], [0, -0.07, 0.38]);
     ctx.head = head;
@@ -358,10 +361,29 @@ window.PTD = window.PTD || {};
     'Tax Collector': { body: 'biped', head: 'human', skin: '#e8cfc0', top: '#57606f', coat: '#4b5260', bottom: '#2f3542', shirtV: '#ffffff', tie: '#2f3542', hat: ['bowler', '#2f3542'], prop: 'clipboard', iris: '#2c3e50', angry: true },
   };
 
+  // How each looter moves, and the little move it does now and then.
+  const GAIT = {
+    sneak: { f: 10, step: 0.45, bob: 0.03, lean: 0.28, crouch: 0.12, sway: 0, arms: 0.25 },
+    scurry: { f: 15, step: 0.6, bob: 0.07, lean: 0.2, crouch: 0.04, sway: 0.04, arms: 0.7 },
+    swagger: { f: 7, step: 0.55, bob: 0.05, lean: -0.04, crouch: 0, sway: 0.16, arms: 0.45 },
+    stomp: { f: 6, step: 0.75, bob: 0.1, lean: 0.08, crouch: 0.02, sway: 0.1, arms: 0.8 },
+    strut: { f: 7.5, step: 0.6, bob: 0.06, lean: -0.1, crouch: 0, sway: 0.05, arms: 0.2 },
+    glide: { f: 4, step: 0, bob: 0.08, lean: 0.05, crouch: -0.06, sway: 0.06, arms: 0.15 },
+    march: { f: 8, step: 0.6, bob: 0.04, lean: 0, crouch: 0, sway: 0, arms: 0.6, snap: true },
+  };
+  const STYLE = {
+    'Sneak Mouse': ['sneak', 'look'], 'Alley Rat': ['scurry', 'look'], 'Sock Goblin': ['scurry', 'laugh'], 'Rag Raccoon': ['scurry', 'look'],
+    'Jackal Pup': ['scurry', 'hop'], 'Pocket Weasel': ['sneak', 'look'], 'Brute Twins': ['stomp', 'flex'], 'Card Shark': ['swagger', 'coin'],
+    'Iron Knuckle': ['stomp', 'flex'], 'Velvet Fox': ['swagger', 'laugh'], 'Masked Bandit': ['sneak', 'look'], 'Fortune Teller': ['glide', 'raise'],
+    'Clockwork Fixer': ['march', 'raise'], 'Heartbreaker': ['swagger', 'wave'], 'Desperado': ['strut', 'look'], 'Loan Shark': ['swagger', 'coin'],
+    'Snake-Oil Seller': ['strut', 'shake'], 'Shell Gamer': ['swagger', 'shake'], 'Silver Tongue': ['glide', 'laugh'], 'Vault Cracker': ['sneak', 'look'],
+    'Tycoon': ['strut', 'twirl'], 'Tax Collector': ['strut', 'raise'],
+  };
+
   function build(def) {
     const spec = SPECS[def.name] || { body: 'biped', head: 'human', skin: '#e0ac8a', top: (def.look || ['#888'])[0] };
     const rig = new T.Group();
-    const ctx = { rig, spec, detail: [], flash: [] };
+    const ctx = { rig, spec, detail: [], flash: [], eyes: [] };
     const base = spec.fur || spec.skin || spec.shell || '#e0ac8a';
     ctx.skinM = skin(base).clone(); ctx.flash.push(ctx.skinM);
     ctx.furM = mat(spec.fur || base, { roughness: 0.95 }).clone(); ctx.flash.push(ctx.furM);
@@ -392,31 +414,88 @@ window.PTD = window.PTD || {};
       if (!spec.gear) sack(ctx);
     }
 
+    const [gaitName, quirkName] = STYLE[def.name] || ['strut', 'look'];
+    const gait = GAIT[spec.robe ? 'glide' : gaitName];
     const armHold = spec.body === 'biped' ? -2.5 : 0;   // left arm reaches back over the shoulder to hold the sack
-    function anim(t, moving, dt) {
-      const ph = t * 9;
-      const sw = moving ? Math.sin(ph) : 0;
-      if (parts.legs) {
-        parts.legs[0].rotation.x = sw * 0.65; parts.legs[1].rotation.x = -sw * 0.65;
-        parts.arms[0].rotation.x = armHold + sw * 0.1;
-        parts.arms[0].rotation.z = -0.25;
-        parts.arms[1].rotation.x = spec.prop ? -0.6 + sw * 0.15 : -sw * 0.55;
-        rig.position.y = moving ? Math.abs(Math.sin(ph)) * 0.06 : 0;
-        if (ctx.head) ctx.head.rotation.z = sw * 0.06;
+    const eyeY = ctx.eyes.map(e => e.scale.y);
+    let quirk = 0, quirkT = 2 + Math.random() * 5, blinkT = 1 + Math.random() * 3, stars = null;
+
+    function setStars(on, t) {
+      if (on && !stars) {
+        stars = new T.Group();
+        for (let k = 0; k < 3; k++) { const st = new T.Mesh(geo('star', () => new T.OctahedronGeometry(0.07, 0)), glow('#ffe066', 2.4)); st.position.set(Math.cos(k / 3 * TAU) * 0.35, 0, Math.sin(k / 3 * TAU) * 0.35); stars.add(st); }
+        stars.position.y = spec.body === 'biped' ? 2.45 : 1.6;
+        rig.add(stars);
       }
-      if (ctx.tail) ctx.tail.rotation.y = Math.sin(t * 6) * 0.45;
-      if (ctx.gearObj) ctx.gearObj.rotation.z += dt * 3;
-      if (parts.crabLegs) parts.crabLegs.forEach((l, i) => { l.rotation.x = Math.sin(ph * 1.6 + i * 1.3) * 0.5; });
-      if (parts.claws) parts.claws.forEach((c, i) => { c.rotation.x = Math.max(0, Math.sin(t * 4 + i * 2)) * 0.6; });
+      if (stars) { stars.visible = on; if (on) stars.rotation.y = t * 6; }
+    }
+
+    // st: { speed (0..1 slow factor), hit (0..1 just got hit), stun, slow }
+    function anim(t, moving, dt, st) {
+      st = st || {};
+      const speed = st.speed || 1;
+      const ph = t * gait.f * speed;
+      const sw = moving ? (gait.snap ? Math.sign(Math.sin(ph)) * Math.min(1, Math.abs(Math.sin(ph)) * 3) : Math.sin(ph)) : 0;
+      // quirks fire every few seconds and play for ~1.2s
+      quirkT -= dt;
+      if (quirkT <= 0) { quirk = 1.2; quirkT = 4 + Math.random() * 6; }
+      quirk = Math.max(0, quirk - dt);
+      const q = quirk > 0 ? Math.sin((1.2 - quirk) / 1.2 * Math.PI) : 0;   // 0 -> 1 -> 0 envelope
+
+      if (parts.legs) {
+        const legAmp = gait.step * (st.stun ? 0 : 1);
+        parts.legs[0].rotation.x = sw * legAmp; parts.legs[1].rotation.x = -sw * legAmp;
+        parts.arms[0].rotation.x = armHold + sw * 0.1; parts.arms[0].rotation.z = -0.25;
+        let rArm = spec.prop ? -0.6 + sw * 0.15 : -sw * gait.arms;
+        let rArmZ = 0;
+        const bob = moving ? Math.abs(Math.sin(ph)) * gait.bob : Math.sin(t * 2) * 0.01;
+        rig.position.y = bob - gait.crouch + (gait === GAIT.glide ? 0.06 + Math.sin(t * 2.2) * 0.05 : 0);
+        rig.rotation.x = gait.lean - (st.hit || 0) * 0.45;                    // lean, or flinch back when hit
+        rig.rotation.z = moving ? Math.sin(ph * 0.5) * gait.sway : 0;
+        const squash = 1 - (st.hit || 0) * 0.12 + (moving ? Math.abs(Math.sin(ph)) * 0.03 : 0);
+        rig.scale.set(1 / Math.sqrt(squash), squash, 1 / Math.sqrt(squash));
+        if (ctx.head) { ctx.head.rotation.z = sw * 0.06; ctx.head.rotation.y = 0; ctx.head.rotation.x = 0; }
+        switch (quirkName) {
+          case 'look': if (ctx.head) ctx.head.rotation.y = q * (quirkT % 2 > 1 ? 1.3 : -1.3); break;
+          case 'laugh': if (ctx.head) ctx.head.rotation.x = -q * 0.5; rig.position.y += Math.abs(Math.sin(t * 22)) * 0.05 * q; break;
+          case 'hop': rig.position.y += q * 0.35; break;
+          case 'flex': parts.arms[0].rotation.x = armHold * (1 - q) - q * 1.4; rArm = -q * 1.4 + rArm * (1 - q); rArmZ = q * 0.9; break;
+          case 'wave': rArm = -2.6 * q + rArm * (1 - q); rArmZ = Math.sin(t * 14) * 0.4 * q; break;
+          case 'raise': rArm = -2.2 * q + rArm * (1 - q); break;
+          case 'coin': rArm = -1.6 * q + rArm * (1 - q); if (ctx.propG) { ctx.propG.position.y = parts.arms[1].children[1].position.y + q * 0.5; ctx.propG.rotation.x = t * 18 * (q > 0 ? 1 : 0); } break;
+          case 'shake': rArm = -1.2 + Math.sin(t * 30) * 0.3 * q; break;
+          case 'twirl': if (ctx.propG) ctx.propG.rotation.y = q > 0 ? t * 14 : 0; rArm = -1.0 * q + rArm * (1 - q); break;
+        }
+        parts.arms[1].rotation.x = rArm; parts.arms[1].rotation.z = -rArmZ;
+        if (ctx.sackG) ctx.sackG.rotation.z = sw * 0.18;
+        if (st.stun && ctx.head) ctx.head.rotation.y = t * 9;
+        if (st.slow) rig.position.x = (Math.random() - 0.5) * 0.025;            // shivering
+        else rig.position.x = 0;
+      }
+      if (ctx.tail) ctx.tail.rotation.y = Math.sin(t * (moving ? 9 : 4)) * 0.5;
+      if (ctx.gearObj) ctx.gearObj.rotation.z += dt * 3 * (1 + q * 4);
+      if (parts.crabLegs) {
+        parts.crabLegs.forEach((l, i) => { l.rotation.x = Math.sin(ph * 1.6 + i * 1.3) * 0.5; });
+        rig.rotation.z = moving ? Math.sin(ph * 0.8) * 0.08 : 0;                // scuttle
+        parts.claws.forEach((c, i) => { c.rotation.x = q > 0 ? Math.abs(Math.sin(t * 20 + i)) * 0.9 : Math.max(0, Math.sin(t * 4 + i * 2)) * 0.5; });
+      }
       if (parts.wings) {
         const f = Math.sin(t * 18) * 0.7;
         parts.wings[0].rotation.y = f; parts.wings[1].rotation.y = -f;
-        rig.position.y = 0.35 + Math.sin(t * 3) * 0.12;
+        rig.position.y = 0.35 + Math.sin(t * 3) * 0.12 + q * 0.5;
+        rig.rotation.x = -q * TAU * ((1.2 - quirk) / 1.2) * (q > 0 ? 1 : 0);   // loop-the-loop
       }
       if (parts.segs) {
-        parts.segs.forEach((s, i) => { s.position.x = Math.sin(t * 6 - i * 0.7) * 0.18 * (i / 8 + 0.2); });
+        parts.segs.forEach((sg, i) => { sg.position.x = Math.sin(t * 6 * speed - i * 0.7) * 0.18 * (i / 8 + 0.2); });
         parts.tongue.visible = Math.sin(t * 5) > 0.6;
+        if (ctx.snakeHead) ctx.snakeHead.position.y = 0.95 + q * 0.45;           // rears up
       }
+      // blinking
+      blinkT -= dt;
+      const shut = blinkT < 0.12;
+      if (blinkT <= 0) blinkT = 2 + Math.random() * 4;
+      ctx.eyes.forEach((e, i) => { e.scale.y = shut ? eyeY[i] * 0.12 : eyeY[i]; });
+      setStars(!!st.stun, t);
     }
 
     // Shadows only from the big shapes keeps 100+ looters cheap.
