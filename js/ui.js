@@ -118,6 +118,7 @@
           const hp = Math.round(game.creepHp(d.def) * (d.def.hpEach || 1));
           banner(faces + '<div>' + d.bosses.map(b => esc(b.name)).join(' &amp; ') + '</div>', d.bosses[0].title + '  &middot;  ' + fmt(hp) + ' HP' + (d.bosses.length > 1 ? ' each' : '') + (d.def.final ? '  &middot;  destroys towers!' : ''), 3400, true);
           A.play('boss');
+          A.clip(d.bosses[0].intro);
         } else {
           banner('Level ' + d.level, PTD.RULES.creepsPerLevel + ' x ' + d.def.name + ' incoming', 1600);
           A.play('wave');
@@ -125,10 +126,13 @@
         break;
       }
       case 'allFolded': toast('Everyone folded. No looters this round.'); break;
-      case 'kill': if (d.owner === me) A.play('coin'); break;
+      case 'kill':
+        if (d.owner === me) A.play('coin');
+        if (d.boss && d.owner === me) { const b = PTD.BOSSES[d.creep ? d.creep.bossIdx : -1]; A.clip((b && b.defeat) || 'back-shots'); }
+        break;
       case 'leak': if (d.player === me) { A.play('leak'); flashGold(); } break;
       case 'defeat': if (d.player !== me) toast(d.player.name + ' went broke!'); break;
-      case 'bossAttack': if (d.creep.owner === me.id && performance.now() > ui.shellWarned) { ui.shellWarned = performance.now() + 8000; toast(PTD.BOSSES[d.creep.bossIdx].name + ' is shelling your towers!', true); } break;
+      case 'bossAttack': if (d.creep.owner === me.id && performance.now() > ui.shellWarned) { ui.shellWarned = performance.now() + 8000; A.clip(PTD.BOSS_ATTACK_SFX); toast(PTD.BOSSES[d.creep.bossIdx].name + ' is shelling your towers!', true); } break;
       case 'towerDestroyed': if (d.tower.owner === me.id) A.play('boom'); break;
       case 'gameOver': A.music.setMood('lounge'); setTimeout(() => showOver(d), 900); break;
       case 'shot': if (d.tower.owner === me.id) A.play('shot', d.fx); break;

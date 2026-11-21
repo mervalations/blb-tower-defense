@@ -1,14 +1,18 @@
 // Boss setup. Edit names here.
 // image: square face picture drawn on the boss's body ('' = drawn face).
 // color: suit colour of the boss.
+// intro / defeat: voice clip played when the boss arrives / is beaten (files in assets/sfx/).
 // Which level each boss appears on is set in PTD.LEVELS (js/data.js) by index into this list.
 window.PTD = window.PTD || {};
 
 PTD.BOSSES = [
-  { name: 'Adam', title: 'Level 6 Boss', image: 'assets/bosses/adam.jpg', color: '#b03a2e' },
-  { name: 'Fuller', title: 'Level 12 Boss', image: 'assets/bosses/fuller.jpg', color: '#1f618d' },
-  { name: 'Marvin', title: 'Level 18 Boss', image: 'assets/bosses/marvin.jpg', color: '#7d3c98' },
-  { name: 'Smooth', title: 'Level 24 Boss', image: 'assets/bosses/smooth.jpg', color: '#1b1b1b' },
-  { name: 'Tree', title: 'Final Boss Tag Team', image: 'assets/bosses/tree.jpg', color: '#196f3d' },
-  { name: 'Giga Chad', title: 'Final Boss Tag Team', image: 'assets/bosses/gigachad.jpg', color: '#b8860b' },
+  { name: 'Adam', title: 'Level 6 Boss', image: 'assets/bosses/adam.jpg', color: '#b03a2e', intro: 'who-wants-back-shots', defeat: 'back-shots' },
+  { name: 'Fuller', title: 'Level 12 Boss', image: 'assets/bosses/fuller.jpg', color: '#1f618d', intro: 'vocodes', defeat: 'back-shots' },
+  { name: 'Marvin', title: 'Level 18 Boss', image: 'assets/bosses/marvin.jpg', color: '#7d3c98', intro: 'who-wants-back-shots', defeat: 'back-shots' },
+  { name: 'Smooth', title: 'Level 24 Boss', image: 'assets/bosses/smooth.jpg', color: '#1b1b1b', intro: 'smooth-is', defeat: 'back-shots' },
+  { name: 'Tree', title: 'Final Boss Tag Team', image: 'assets/bosses/tree.jpg', color: '#196f3d', intro: 'rocky-theme', defeat: 'back-shots' },
+  { name: 'Giga Chad', title: 'Final Boss Tag Team', image: 'assets/bosses/gigachad.jpg', color: '#b8860b', intro: 'rocky-theme', defeat: 'back-shots' },
 ];
+
+// Played whenever the final boss shells one of your towers.
+PTD.BOSS_ATTACK_SFX = 'stab-from-behind';

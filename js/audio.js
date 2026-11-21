@@ -198,7 +198,12 @@ PTD.Audio = (function () {
 
   // Soundtrack: the files in assets/music play back to back on a loop. If they can't load
   // (missing files, blocked autoplay), the generated Synth band plays instead.
-  const TRACKS = ['assets/music/willie.mp3', 'assets/music/mic0061.mp3'];
+  // Tracks in assets/music/local/ are git-ignored: they play when you run the game from
+  // your own folder but are never uploaded to the public site.
+  const PUBLIC_TRACKS = ['assets/music/td2.mp3'];
+  const LOCAL_TRACKS = ['assets/music/local/td.mp3', 'assets/music/local/td3.m4a', 'assets/music/local/td4.m4a',
+    'assets/music/local/td5.m4a', 'assets/music/local/td6.m4a', 'assets/music/local/td7.m4a'];
+  const TRACKS = location.protocol === 'file:' ? [LOCAL_TRACKS[0]].concat(PUBLIC_TRACKS, LOCAL_TRACKS.slice(1)) : PUBLIC_TRACKS;
   const Music = (function () {
     let el = null, idx = 0, on = true, failed = false, playing = false;
     function load() {
@@ -207,7 +212,12 @@ PTD.Audio = (function () {
       el.preload = 'auto';
       el.volume = 0.45;
       el.addEventListener('ended', () => { idx = (idx + 1) % TRACKS.length; el.src = TRACKS[idx]; if (playing) el.play().catch(() => {}); });
-      el.addEventListener('error', () => { failed = true; if (playing) { playing = false; Synth.enable(true); } });
+      let errors = 0;
+      el.addEventListener('playing', () => { errors = 0; });
+      el.addEventListener('error', () => {
+        if (++errors < TRACKS.length) { idx = (idx + 1) % TRACKS.length; el.src = TRACKS[idx]; if (playing) el.play().catch(() => {}); return; }
+        failed = true; if (playing) { playing = false; Synth.enable(true); }
+      });
       el.src = TRACKS[idx];
       return el;
     }
@@ -221,13 +231,31 @@ PTD.Audio = (function () {
     return {
       setMood(m) { Synth.setMood(m); },
       enable(v) { on = v; if (v) start(); else stop(); },
+      duck(v) { if (el) el.volume = v ? 0.12 : 0.45; },
       next() { if (!el) return; idx = (idx + 1) % TRACKS.length; el.src = TRACKS[idx]; if (playing) el.play().catch(() => {}); },
       start, stop,
       get on() { return on; },
     };
   })();
 
+  const clips = {};
+  let voice = null, duckTimer = 0;
+  // One voice clip at a time; a new one interrupts the old.
+  function clip(name) {
+    if (muted || !name) return;
+    if (!clips[name]) { clips[name] = new Audio('assets/sfx/' + name + '.mp3'); clips[name].preload = 'auto'; }
+    if (voice && voice !== clips[name]) voice.pause();
+    voice = clips[name];
+    voice.currentTime = 0;
+    voice.volume = 0.95;
+    Music.duck(true);
+    clearTimeout(duckTimer);
+    voice.onended = () => { duckTimer = setTimeout(() => Music.duck(false), 300); };
+    voice.play().catch(() => Music.duck(false));
+  }
+
   return {
+    clip,
     play(name, arg) { try { sfx[name] && sfx[name](arg); } catch (e) { /* audio is optional */ } },
     unlock() { if (ensure() && ctx.state === 'suspended') ctx.resume(); if (!muted) Music.start(); },
     // Sound button cycles: everything on -> music off -> all off.

@@ -51,7 +51,7 @@ PTD.Net = (function () {
       case 'combine': return { p: pid(d.player), type: d.combo.type, title: d.combo.title };
       case 'handResult': return { w: d.winners.map(pid), bonus: d.bonus, title: d.title };
       case 'waveStart': return { level: d.level };
-      case 'kill': return { o: pid(d.owner), boss: d.boss };
+      case 'kill': return { o: pid(d.owner), boss: d.boss, b: d.creep && d.creep.bossIdx != null ? d.creep.bossIdx : -1 };
       case 'leak': return { p: pid(d.player), loss: d.loss };
       case 'bossAttack': return { o: d.creep.owner, b: d.creep.bossIdx, c: d.creep.id, tw: d.tower.id, tx: d.tower.x, ty: d.tower.y };
       case 'towerDestroyed': return { o: d.tower.owner };
@@ -349,7 +349,7 @@ PTD.Net = (function () {
         case 'combine': d.player = P(e.p); d.combo = { type: e.type, title: e.title }; break;
         case 'handResult': d.winners = e.w.map(P); d.bonus = e.bonus; d.title = e.title; break;
         case 'waveStart': { d.level = e.level; d.def = PTD.LEVELS[e.level - 1]; const b = PTD.levelBosses(d.def); d.bosses = b ? b.map(i => PTD.BOSSES[i]) : null; break; }
-        case 'kill': d.owner = P(e.o); d.boss = e.boss; break;
+        case 'kill': d.owner = P(e.o); d.boss = e.boss; d.creep = { bossIdx: e.b }; break;
         case 'leak': d.player = P(e.p); d.loss = e.loss; break;
         case 'bossAttack': {
           const c = g.creepById.get(e.c);
