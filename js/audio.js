@@ -1,4 +1,5 @@
-// Synthesised sound effects (no audio files needed).
+// Synthesised sound effects (no audio files needed): layered voices, a small room reverb,
+// and a short musical sting for each looter crew.
 window.PTD = window.PTD || {};
 
 PTD.Audio = (function () {
@@ -10,35 +11,11 @@ PTD.Audio = (function () {
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return false;
     ctx = new AC();
-    master = ctx.createGain(); master.gain.value = 0.35; master.connect(ctx.destination);
+    master = ctx.createGain(); master.gain.value = 0.35;
+    // gentle limiter so big moments (boss + coins + explosions) don't clip
+    const lim = ctx.createDynamicsCompressor(); lim.threshold.value = -10; lim.knee.value = 8; lim.ratio.value = 6; lim.attack.value = 0.004; lim.release.value = 0.2;
+    master.connect(lim); lim.connect(ctx.destination);
     return true;
-  }
-
-  function tone(freq, dur, type, vol, slide, delay) {
-    if (muted || !ensure()) return;
-    const t0 = ctx.currentTime + (delay || 0);
-    const o = ctx.createOscillator(), g = ctx.createGain();
-    o.type = type || 'sine';
-    o.frequency.setValueAtTime(freq, t0);
-    if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(30, freq * slide), t0 + dur);
-    g.gain.setValueAtTime(0.0001, t0);
-    g.gain.exponentialRampToValueAtTime(vol || 0.3, t0 + 0.01);
-    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-    o.connect(g); g.connect(master);
-    o.start(t0); o.stop(t0 + dur + 0.02);
-  }
-
-  function noise(dur, vol, hp, delay) {
-    if (muted || !ensure()) return;
-    const t0 = ctx.currentTime + (delay || 0);
-    const len = Math.floor(ctx.sampleRate * dur);
-    const buf = ctx.createBuffer(1, len, ctx.sampleRate), d = buf.getChannelData(0);
-    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len);
-    const s = ctx.createBufferSource(); s.buffer = buf;
-    const f = ctx.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = hp || 1000;
-    const g = ctx.createGain(); g.gain.value = vol || 0.2;
-    s.connect(f); f.connect(g); g.connect(master);
-    s.start(t0);
   }
 
   // Rate-limit noisy sounds so a big wave doesn't turn into static.
@@ -48,32 +25,189 @@ PTD.Audio = (function () {
     last[key] = now; return true;
   }
 
+  // ---------------------------------------------------------------- richer sfx voices
+  // Layered sounds: a transient (filtered noise), a pitched body with a filter envelope, and a
+  // send into a small procedural room reverb. Every play nudges pitch/volume a little so
+  // repeated sounds don't feel machine-gunned.
+  let verb = null, noiseBuf = null;
+  function bus() {
+    if (verb || !ensure()) return verb;
+    const len = Math.floor(ctx.sampleRate * 1.4), ir = ctx.createBuffer(2, len, ctx.sampleRate);
+    for (let ch = 0; ch < 2; ch++) { const d = ir.getChannelData(ch); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3.2); }
+    const conv = ctx.createConvolver(); conv.buffer = ir;
+    verb = ctx.createGain(); verb.gain.value = 0.28;
+    verb.connect(conv); conv.connect(master);
+    noiseBuf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+    const nd = noiseBuf.getChannelData(0); for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+    return verb;
+  }
+  const vary = (x, amt) => x * (1 + (Math.random() - 0.5) * 2 * (amt == null ? 0.04 : amt));
+  const midi = (n) => 440 * Math.pow(2, (n - 69) / 12);
+
+  // o: { f, f1 (end pitch), type, dur, vol, at (attack), delay, cut (filter Hz), cut1, q, wet, vib, vibRate, detune, pan }
+  function synth(o) {
+    if (muted || !bus()) return;
+    const t0 = ctx.currentTime + (o.delay || 0), dur = o.dur || 0.2;
+    const out = ctx.createGain(); out.gain.value = 1;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(o.vol || 0.2, t0 + (o.at || 0.008));
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    let node = g;
+    if (o.cut) {
+      const f = ctx.createBiquadFilter(); f.type = o.ftype || 'lowpass'; f.Q.value = o.q || 0.8;
+      f.frequency.setValueAtTime(o.cut, t0);
+      if (o.cut1) f.frequency.exponentialRampToValueAtTime(o.cut1, t0 + dur);
+      g.connect(f); node = f;
+    }
+    if (o.pan && ctx.createStereoPanner) { const p = ctx.createStereoPanner(); p.pan.value = o.pan; node.connect(p); node = p; }
+    node.connect(out); out.connect(master);
+    if (o.wet) { const s = ctx.createGain(); s.gain.value = o.wet; out.connect(s); s.connect(verb); }
+    const oscs = o.detune ? [-o.detune, o.detune] : [0];
+    for (const dt of oscs) {
+      const osc = ctx.createOscillator(); osc.type = o.type || 'sine';
+      osc.frequency.setValueAtTime(o.f, t0);
+      if (o.f1) osc.frequency.exponentialRampToValueAtTime(Math.max(20, o.f1), t0 + (o.glide || dur));
+      osc.detune.value = dt;
+      if (o.vib) { const l = ctx.createOscillator(), lg = ctx.createGain(); l.frequency.value = o.vibRate || 6; lg.gain.value = o.f * o.vib; l.connect(lg); lg.connect(osc.frequency); l.start(t0); l.stop(t0 + dur + 0.05); }
+      osc.connect(g); osc.start(t0); osc.stop(t0 + dur + 0.05);
+    }
+  }
+  // o: { dur, vol, f (filter Hz), f1, q, type ('bandpass' | 'lowpass' | 'highpass'), delay, wet, at }
+  function hiss(o) {
+    if (muted || !bus()) return;
+    const t0 = ctx.currentTime + (o.delay || 0), dur = o.dur || 0.1;
+    const s = ctx.createBufferSource(); s.buffer = noiseBuf; s.loop = true;
+    const f = ctx.createBiquadFilter(); f.type = o.type || 'bandpass'; f.Q.value = o.q || 1;
+    f.frequency.setValueAtTime(o.f || 2000, t0);
+    if (o.f1) f.frequency.exponentialRampToValueAtTime(o.f1, t0 + dur);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(o.vol || 0.2, t0 + (o.at || 0.004));
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    s.connect(f); f.connect(g); g.connect(master);
+    if (o.wet) { const w = ctx.createGain(); w.gain.value = o.wet; g.connect(w); w.connect(verb); }
+    s.start(t0, Math.random() * 0.5); s.stop(t0 + dur + 0.05);
+  }
+
+  // A few instruments for the crew stings: (semitone note, start beat, length beats)
+  const INST = {
+    squeeze: (f, d, at, v) => synth({ f, dur: d, delay: at, vol: v * 0.5, type: 'sawtooth', detune: 9, cut: 1700, vib: 0.006, vibRate: 7, at: 0.03, wet: 0.25 }),
+    pluck: (f, d, at, v) => synth({ f, dur: Math.min(d, 0.6), delay: at, vol: v, type: 'triangle', cut: 4000, cut1: 600, wet: 0.35 }),
+    organ: (f, d, at, v) => { synth({ f, dur: d, delay: at, vol: v * 0.35, type: 'square', cut: 1400, at: 0.04, wet: 0.5 }); synth({ f: f * 2, dur: d, delay: at, vol: v * 0.2, type: 'sine', at: 0.04, wet: 0.5 }); },
+    theremin: (f, d, at, v) => synth({ f, f1: f * 1.06, glide: d, dur: d, delay: at, vol: v * 0.6, type: 'sine', vib: 0.02, vibRate: 5.5, at: 0.08, wet: 0.5 }),
+    tom: (f, d, at, v) => { synth({ f: f * 0.5, f1: f * 0.3, dur: 0.25, delay: at, vol: v * 1.3, type: 'sine' }); hiss({ dur: 0.05, vol: v * 0.3, f: 1200, delay: at }); },
+    bleep: (f, d, at, v) => synth({ f, dur: Math.min(d, 0.14), delay: at, vol: v * 0.35, type: 'square', cut: 3000 }),
+    harp: (f, d, at, v) => synth({ f, dur: 0.7, delay: at, vol: v * 0.7, type: 'triangle', wet: 0.6 }),
+    twang: (f, d, at, v) => synth({ f: f * 1.02, f1: f, glide: 0.05, dur: Math.min(d, 0.5), delay: at, vol: v * 0.7, type: 'sawtooth', cut: 2600, cut1: 500, wet: 0.2 }),
+    reed: (f, d, at, v) => synth({ f, dur: d, delay: at, vol: v * 0.4, type: 'square', cut: 1500, vib: 0.012, vibRate: 6, at: 0.03, wet: 0.3 }),
+    kazoo: (f, d, at, v) => synth({ f, dur: d, delay: at, vol: v * 0.45, type: 'sawtooth', cut: 2200, q: 4, vib: 0.02, vibRate: 9, at: 0.02 }),
+    horn: (f, d, at, v) => synth({ f, dur: d, delay: at, vol: v * 0.55, type: 'sawtooth', detune: 6, cut: 500, cut1: 1600, at: 0.12, wet: 0.45 }),
+    ooh: (f, d, at, v) => synth({ f, f1: f * 0.9, dur: d, delay: at, vol: v * 0.5, type: 'sine', vib: 0.03, vibRate: 4, at: 0.15, wet: 0.8 }),
+    brass: (f, d, at, v) => synth({ f, dur: d, delay: at, vol: v * 0.45, type: 'sawtooth', detune: 5, cut: 900, cut1: 2600, at: 0.03, wet: 0.35 }),
+    pad: (f, d, at, v) => synth({ f, dur: d, delay: at, vol: v * 0.35, type: 'sawtooth', detune: 12, cut: 400, cut1: 3000, at: 0.25, wet: 0.6 }),
+    xylo: (f, d, at, v) => { synth({ f, dur: 0.3, delay: at, vol: v * 0.7, type: 'sine', wet: 0.3 }); synth({ f: f * 4, dur: 0.06, delay: at, vol: v * 0.2, type: 'sine' }); },
+    mandolin: (f, d, at, v) => { for (let k = 0; k < Math.max(1, Math.round(d / 0.06)); k++) synth({ f, dur: 0.08, delay: at + k * 0.06, vol: v * 0.35, type: 'triangle', cut: 3500 }); },
+    bubble: (f, d, at, v) => synth({ f: f * 0.6, f1: f * 1.6, dur: 0.09, delay: at, vol: v * 0.5, type: 'sine' }),
+    kick: (f, d, at, v) => synth({ f: 150, f1: 45, dur: 0.22, delay: at, vol: v * 1.4, type: 'sine' }),
+    hat: (f, d, at, v) => hiss({ dur: 0.05, vol: v * 0.25, f: 9000, type: 'highpass', delay: at }),
+    roar: (f, d, at, v) => { hiss({ dur: d, vol: v * 0.5, f: 300, f1: 900, type: 'lowpass', q: 3, delay: at, at: 0.08 }); synth({ f: f * 0.5, f1: f * 0.35, dur: d, delay: at, vol: v * 0.5, type: 'sawtooth', cut: 600, vib: 0.05, vibRate: 11, at: 0.08 }); },
+    wind: (f, d, at, v) => hiss({ dur: d, vol: v * 0.25, f: 500, f1: 1500, q: 6, delay: at, at: 0.3, wet: 0.5 }),
+    zap: (f, d, at, v) => synth({ f: f * 4, f1: f, dur: 0.18, delay: at, vol: v * 0.3, type: 'sawtooth', cut: 5000, vib: 0.3, vibRate: 40 }),
+    whistle: (f, d, at, v) => synth({ f: f * 2, f1: f * 2.5, glide: d * 0.6, dur: d, delay: at, vol: v * 0.3, type: 'sine', vib: 0.01, vibRate: 12 }),
+  };
+  // Crew stings: [instrument, root midi note, beat seconds, [[semitone, beat, beats], ...], volume]
+  const STINGS = {
+    pirates: [['squeeze', 62, 0.16, [[0, 0, 1], [5, 1, 1], [5, 2, 1], [5, 3, 2], [7, 5, 1], [9, 6, 3]], 0.5], ['tom', 50, 0.16, [[0, 0], [0, 3], [0, 6]], 0.4]],
+    ninjas: [['pluck', 69, 0.12, [[0, 0, 1], [3, 1, 1], [5, 2, 1], [7, 3, 1], [10, 4, 2], [12, 6, 3]], 0.45], ['wind', 60, 0.12, [[0, 0, 4]], 0.4]],
+    zombies: [['organ', 50, 0.22, [[0, 0, 2], [-1, 2, 2], [-2, 4, 2], [-6, 6, 4]], 0.5], ['ooh', 45, 0.22, [[0, 0, 8]], 0.35]],
+    aliens: [['theremin', 72, 0.25, [[0, 0, 2], [7, 2, 1], [6, 3, 1], [12, 4, 4]], 0.5], ['bleep', 84, 0.06, [[0, 0], [5, 1], [3, 2], [10, 3], [7, 5]], 0.3]],
+    cavemen: [['tom', 52, 0.18, [[0, 0], [0, 1], [7, 2], [0, 3], [5, 4], [0, 6]], 0.6], ['horn', 45, 0.18, [[0, 4, 4]], 0.35]],
+    robots: [['bleep', 76, 0.09, [[0, 0], [12, 1], [7, 2], [3, 3], [0, 4], [12, 5], [15, 6], [19, 8]], 0.45], ['zap', 50, 0.09, [[0, 8]], 0.4]],
+    wizards: [['harp', 72, 0.07, [[0, 0], [4, 1], [7, 2], [11, 3], [12, 4], [16, 5], [19, 6], [23, 7], [24, 8]], 0.4], ['pad', 48, 0.07, [[0, 0, 14]], 0.4]],
+    cowboys: [['twang', 52, 0.15, [[0, 0, 1], [7, 1, 1], [12, 2, 1], [10, 3, 1], [7, 4, 2], [0, 6, 3]], 0.5], ['whistle', 76, 0.15, [[0, 2, 4]], 0.3]],
+    mummies: [['reed', 62, 0.14, [[0, 0, 1], [1, 1, 1], [4, 2, 1], [5, 3, 1], [7, 4, 1], [5, 5, 1], [4, 6, 1], [1, 7, 3]], 0.5]],
+    clowns: [['kazoo', 67, 0.13, [[0, 0, 1], [4, 1, 1], [7, 2, 1], [12, 3, 1], [11, 4, 1], [12, 5, 3]], 0.5], ['tom', 60, 0.13, [[0, 0], [7, 2], [0, 4]], 0.3]],
+    vikings: [['horn', 45, 0.2, [[0, 0, 3], [7, 3, 2], [5, 5, 4]], 0.6], ['tom', 45, 0.2, [[0, 0], [0, 1.5], [0, 3], [0, 5]], 0.5]],
+    ghosts: [['ooh', 64, 0.26, [[0, 0, 3], [-2, 3, 2], [3, 5, 4]], 0.55], ['wind', 60, 0.26, [[0, 0, 9]], 0.4]],
+    dinos: [['roar', 50, 0.2, [[0, 0, 5]], 0.7], ['tom', 40, 0.2, [[0, 0], [0, 2], [0, 4]], 0.6]],
+    knights: [['brass', 60, 0.13, [[0, 0, 1], [0, 1, 1], [0, 2, 1], [5, 3, 3], [9, 6, 1], [12, 7, 4]], 0.5]],
+    astronauts: [['pad', 48, 0.3, [[0, 0, 6]], 0.5], ['bleep', 84, 0.15, [[0, 0], [7, 2], [12, 4], [19, 6]], 0.3], ['theremin', 79, 0.3, [[0, 2, 4]], 0.25]],
+    gnomes: [['xylo', 72, 0.1, [[0, 0], [4, 1], [7, 2], [4, 3], [9, 4], [7, 5], [12, 6]], 0.5], ['tom', 60, 0.1, [[0, 0], [0, 4]], 0.3]],
+    luchadores: [['brass', 65, 0.13, [[0, 0, 1], [4, 1, 1], [7, 2, 2], [9, 4, 1], [7, 5, 3]], 0.45], ['brass', 61, 0.13, [[0, 0, 1], [3, 1, 1], [4, 2, 2], [5, 4, 1], [4, 5, 3]], 0.35]],
+    vampires: [['organ', 57, 0.16, [[0, 0, 1], [-2, 1, 1], [0, 2, 4], [-5, 6, 1], [-7, 7, 1], [-8, 8, 1], [-12, 9, 4]], 0.55]],
+    yetis: [['roar', 45, 0.25, [[0, 0, 4]], 0.6], ['wind', 60, 0.25, [[0, 0, 10]], 0.5], ['tom', 38, 0.25, [[0, 1], [0, 3]], 0.6]],
+    chefs: [['mandolin', 67, 0.14, [[0, 0, 2], [4, 2, 1], [7, 3, 1], [12, 4, 2], [7, 6, 2]], 0.5]],
+    divers: [['bubble', 72, 0.07, [[0, 0], [5, 1], [2, 2], [9, 3], [7, 5], [14, 6], [12, 8]], 0.5], ['ooh', 55, 0.07, [[0, 0, 12]], 0.3]],
+    scientists: [['theremin', 67, 0.18, [[0, 0, 1], [6, 1, 1], [3, 2, 1], [9, 3, 3]], 0.45], ['zap', 60, 0.18, [[0, 2], [0, 4.5]], 0.4]],
+    gladiators: [['brass', 55, 0.18, [[0, 0, 2], [7, 2, 1], [5, 3, 1], [7, 4, 4]], 0.5], ['tom', 43, 0.18, [[0, 0], [0, 1], [0, 2], [0, 4]], 0.6]],
+    explorers: [['tom', 57, 0.13, [[0, 0], [5, 1], [0, 1.5], [7, 2], [0, 3], [5, 3.5], [0, 4]], 0.5], ['whistle', 79, 0.13, [[0, 1, 2], [5, 4, 2]], 0.3]],
+    disco: [['kick', 0, 0.22, [[0, 0], [0, 1], [0, 2], [0, 3]], 0.6], ['hat', 0, 0.22, [[0, 0.5], [0, 1.5], [0, 2.5], [0, 3.5]], 0.6],
+      ['twang', 40, 0.22, [[0, 0, 0.5], [12, 0.5, 0.5], [0, 1, 0.5], [12, 1.5, 0.5], [3, 2, 0.5], [15, 2.5, 0.5], [5, 3, 0.5], [17, 3.5, 0.5]], 0.45]],
+  };
+  function sting(theme) {
+    const s = STINGS[theme];
+    if (!s) { synth({ f: 392, dur: 0.15, type: 'triangle', vol: 0.2 }); synth({ f: 523, dur: 0.25, type: 'triangle', vol: 0.2, delay: 0.15 }); return; }
+    for (const [inst, root, beat, notes, vol] of s) {
+      for (const n of notes) INST[inst](midi(root + n[0]), (n[2] || 1) * beat, n[1] * beat, vol);
+    }
+  }
+
+  const SHOTS = {
+    arrow: () => { hiss({ dur: 0.09, vol: 0.06, f: 2500, f1: 900, q: 2 }); synth({ f: vary(1400), f1: 700, dur: 0.05, vol: 0.02, type: 'triangle' }); },
+    fire: () => { hiss({ dur: 0.18, vol: 0.07, f: 600, f1: 2000, type: 'lowpass', q: 2 }); synth({ f: vary(220), f1: 140, dur: 0.12, vol: 0.03, type: 'sawtooth', cut: 900 }); },
+    shell: () => { synth({ f: vary(130), f1: 60, dur: 0.14, vol: 0.12, type: 'sine' }); hiss({ dur: 0.05, vol: 0.06, f: 1500 }); },
+    chain: () => { synth({ f: vary(1800), f1: 300, dur: 0.1, vol: 0.04, type: 'sawtooth', cut: 6000, vib: 0.4, vibRate: 55 }); hiss({ dur: 0.06, vol: 0.04, f: 6000, type: 'highpass' }); },
+    orb: () => synth({ f: vary(500), f1: 900, dur: 0.12, vol: 0.06, type: 'sine', wet: 0.3 }),
+    poison: () => { synth({ f: vary(300), f1: 700, dur: 0.08, vol: 0.05, type: 'sine' }); synth({ f: vary(420), f1: 900, dur: 0.07, vol: 0.04, type: 'sine', delay: 0.05 }); },
+    frost: () => { synth({ f: vary(2400), dur: 0.2, vol: 0.035, type: 'sine', wet: 0.4 }); synth({ f: vary(3600), dur: 0.12, vol: 0.02, type: 'sine', delay: 0.03 }); },
+    royal: () => { synth({ f: vary(1047), dur: 0.25, vol: 0.05, type: 'triangle', wet: 0.4 }); synth({ f: vary(1568), dur: 0.2, vol: 0.035, type: 'triangle', delay: 0.04, wet: 0.4 }); },
+    mortar: () => { synth({ f: vary(90), f1: 40, dur: 0.3, vol: 0.18, type: 'sine' }); hiss({ dur: 0.15, vol: 0.1, f: 400, type: 'lowpass' }); },
+    bash: () => { synth({ f: vary(320), f1: 200, dur: 0.1, vol: 0.06, type: 'square', cut: 1500 }); hiss({ dur: 0.04, vol: 0.06, f: 3000 }); },
+  };
+
   const sfx = {
-    deal() { noise(0.08, 0.25, 2500); tone(900, 0.06, 'triangle', 0.08, 1.4, 0.02); },
-    select() { tone(660, 0.05, 'triangle', 0.12); },
-    combine() { [523, 659, 784, 1047].forEach((f, i) => tone(f, 0.18, 'triangle', 0.18, 1, i * 0.07)); },
-    swap() { noise(0.15, 0.2, 1800); tone(500, 0.12, 'sine', 0.1, 1.6); },
-    coin() { if (!throttle('coin', 60)) return; tone(1320, 0.06, 'square', 0.05); tone(1760, 0.1, 'square', 0.05, 1, 0.05); },
-    leak() { if (!throttle('leak', 120)) return; tone(180, 0.3, 'sawtooth', 0.15, 0.6); },
-    error() { tone(200, 0.12, 'square', 0.12); tone(150, 0.15, 'square', 0.12, 1, 0.1); },
-    tick() { tone(1000, 0.04, 'sine', 0.12); },
-    wave() { tone(392, 0.15, 'triangle', 0.2); tone(523, 0.25, 'triangle', 0.2, 1, 0.15); },
-    boss() { [110, 110, 82, 110].forEach((f, i) => tone(f, 0.35, 'sawtooth', 0.22, 0.9, i * 0.22)); noise(0.6, 0.15, 200, 0.6); },
-    win() { [523, 659, 784, 1047, 784, 1047].forEach((f, i) => tone(f, 0.22, 'triangle', 0.2, 1, i * 0.12)); },
-    lose() { [392, 330, 262, 196].forEach((f, i) => tone(f, 0.3, 'sawtooth', 0.15, 1, i * 0.2)); },
-    hand() { tone(784, 0.1, 'triangle', 0.15); tone(1175, 0.2, 'triangle', 0.15, 1, 0.1); },
-    boom() { noise(0.5, 0.35, 120); tone(90, 0.4, 'sine', 0.3, 0.5); },
-    tip() { tone(1500, 0.08, 'square', 0.06); tone(2000, 0.1, 'square', 0.06, 1, 0.07); },
-    shot(fx) {
-      if (!throttle('shot' + fx, 70)) return;
-      switch (fx) {
-        case 'chain': noise(0.07, 0.08, 4000); break;
-        case 'fire': tone(300, 0.1, 'sawtooth', 0.04, 0.6); break;
-        case 'shell': tone(140, 0.12, 'square', 0.05, 0.6); break;
-        case 'royal': tone(1200, 0.12, 'triangle', 0.06, 0.5); break;
-        default: tone(700, 0.04, 'triangle', 0.03, 0.7);
-      }
+    deal() { hiss({ dur: 0.07, vol: 0.18, f: vary(3200, 0.1), q: 1.5 }); synth({ f: vary(950), f1: 1300, dur: 0.05, vol: 0.06, type: 'triangle', delay: 0.02 }); },
+    select() { synth({ f: vary(700, 0.02), dur: 0.06, vol: 0.1, type: 'triangle' }); hiss({ dur: 0.02, vol: 0.05, f: 4000 }); },
+    combine() {
+      [523, 659, 784, 1047, 1319].forEach((f, i) => { synth({ f, dur: 0.35, vol: 0.13, type: 'triangle', delay: i * 0.06, wet: 0.5 }); synth({ f: f * 2, dur: 0.2, vol: 0.04, type: 'sine', delay: i * 0.06 + 0.01 }); });
+      hiss({ dur: 0.5, vol: 0.06, f: 7000, type: 'highpass', delay: 0.1, at: 0.1, wet: 0.6 });
     },
+    swap() { hiss({ dur: 0.2, vol: 0.15, f: 1500, f1: 4000, q: 1.2 }); synth({ f: 500, f1: 900, dur: 0.14, vol: 0.07, type: 'sine' }); },
+    coin() { if (!throttle('coin', 55)) return; const p = vary(1, 0.05); synth({ f: 1320 * p, dur: 0.1, vol: 0.06, type: 'square', cut: 5000 }); synth({ f: 1760 * p, dur: 0.18, vol: 0.06, type: 'square', cut: 5000, delay: 0.05, wet: 0.2 }); },
+    leak() { if (!throttle('leak', 120)) return; synth({ f: 330, f1: 150, dur: 0.45, vol: 0.12, type: 'sawtooth', cut: 1200, cut1: 300, vib: 0.03, vibRate: 7 }); synth({ f: 80, f1: 45, dur: 0.2, vol: 0.2, type: 'sine' }); },
+    error() { synth({ f: 220, dur: 0.1, vol: 0.1, type: 'square', cut: 1500 }); synth({ f: 165, dur: 0.16, vol: 0.1, type: 'square', cut: 1500, delay: 0.1 }); },
+    tick() { synth({ f: 1100, dur: 0.05, vol: 0.12, type: 'sine' }); hiss({ dur: 0.02, vol: 0.06, f: 5000 }); },
+    wave() { sting(); },
+    sting(theme) { sting(theme); },
+    boss() { [55, 55, 41, 55].forEach((f, i) => { synth({ f: f * 2, dur: 0.4, vol: 0.18, type: 'sawtooth', detune: 8, cut: 700, delay: i * 0.22, wet: 0.4 }); INST.tom(f * 2, 0.3, i * 0.22, 0.6); }); hiss({ dur: 0.8, vol: 0.12, f: 250, type: 'lowpass', delay: 0.66, wet: 0.5 }); },
+    win() { [523, 659, 784, 1047, 784, 1047, 1319].forEach((f, i) => { synth({ f, dur: 0.3, vol: 0.13, type: 'triangle', delay: i * 0.11, wet: 0.4 }); synth({ f: f / 2, dur: 0.3, vol: 0.06, type: 'sawtooth', cut: 1200, delay: i * 0.11 }); }); },
+    lose() { [392, 330, 262, 196].forEach((f, i) => synth({ f, f1: f * 0.97, dur: 0.4, vol: 0.12, type: 'sawtooth', cut: 1100, delay: i * 0.22, vib: 0.02, vibRate: 5, wet: 0.4 })); },
+    hand() { hiss({ dur: 0.04, vol: 0.12, f: 2500, q: 3 }); hiss({ dur: 0.04, vol: 0.1, f: 3200, q: 3, delay: 0.06 }); synth({ f: 784, dur: 0.12, vol: 0.08, type: 'triangle', delay: 0.05 }); synth({ f: 1175, dur: 0.22, vol: 0.08, type: 'triangle', delay: 0.13, wet: 0.3 }); },
+    boom() { synth({ f: 120, f1: 30, dur: 0.6, vol: 0.35, type: 'sine' }); hiss({ dur: 0.6, vol: 0.3, f: 900, f1: 150, type: 'lowpass', wet: 0.4 }); hiss({ dur: 0.3, vol: 0.12, f: 3000, delay: 0.05 }); },
+    tip() { synth({ f: 1500, dur: 0.08, vol: 0.05, type: 'square', cut: 4000 }); synth({ f: 2000, dur: 0.14, vol: 0.05, type: 'square', cut: 4000, delay: 0.07, wet: 0.3 }); },
+    shot(fx) { if (!throttle('shot' + fx, 70)) return; (SHOTS[fx] || SHOTS.arrow)(); },
+    // ---- new event sounds
+    hit() { if (!throttle('hit', 45)) return; hiss({ dur: 0.05, vol: 0.07, f: vary(1800, 0.2), q: 1.5 }); synth({ f: vary(160, 0.1), f1: 90, dur: 0.07, vol: 0.06, type: 'sine' }); },
+    pop(kind) {
+      if (!throttle('pop', 40)) return;
+      const k = kind == null ? Math.floor(Math.random() * 3) : kind;
+      if (k === 0) synth({ f: vary(420, 0.08), f1: 1100, dur: 0.12, vol: 0.12, type: 'sine', wet: 0.2 });
+      else if (k === 1) { synth({ f: vary(600, 0.08), f1: 300, dur: 0.1, vol: 0.1, type: 'triangle' }); hiss({ dur: 0.08, vol: 0.08, f: 2500, q: 2 }); }
+      else { synth({ f: vary(300, 0.08), f1: 900, dur: 0.08, vol: 0.1, type: 'sine' }); synth({ f: vary(900, 0.08), f1: 1500, dur: 0.07, vol: 0.06, type: 'sine', delay: 0.05 }); }
+      hiss({ dur: 0.12, vol: 0.05, f: 1200, type: 'lowpass', delay: 0.02 });
+    },
+    leaderPop() { [659, 784, 988, 1319].forEach((f, i) => synth({ f, dur: 0.22, vol: 0.1, type: 'triangle', delay: i * 0.05, wet: 0.45 })); synth({ f: 200, f1: 60, dur: 0.3, vol: 0.18, type: 'sine' }); hiss({ dur: 0.3, vol: 0.08, f: 6000, type: 'highpass', delay: 0.1, wet: 0.5 }); },
+    cleared() {
+      [523, 659, 784, 1047].forEach((f, i) => { synth({ f, dur: 0.3, vol: 0.12, type: 'triangle', delay: i * 0.08, wet: 0.45 }); synth({ f: f * 1.5, dur: 0.25, vol: 0.05, type: 'sine', delay: i * 0.08 + 0.02 }); });
+      for (let i = 0; i < 6; i++) synth({ f: vary(1700, 0.15), dur: 0.12, vol: 0.04, type: 'square', cut: 5000, delay: 0.3 + i * 0.05 });
+    },
+    land() { synth({ f: 90, f1: 28, dur: 0.8, vol: 0.4, type: 'sine' }); hiss({ dur: 0.7, vol: 0.3, f: 700, f1: 120, type: 'lowpass', wet: 0.5 }); hiss({ dur: 0.15, vol: 0.15, f: 2500, delay: 0.02 }); },
+    slam() { synth({ f: 140, f1: 50, dur: 0.4, vol: 0.35, type: 'sine' }); hiss({ dur: 0.12, vol: 0.25, f: 1600, q: 0.8 }); hiss({ dur: 0.5, vol: 0.1, f: 400, type: 'lowpass', delay: 0.05, wet: 0.6 }); },
+    thud() { synth({ f: 110, f1: 45, dur: 0.3, vol: 0.3, type: 'sine' }); hiss({ dur: 0.2, vol: 0.12, f: 500, type: 'lowpass' }); synth({ f: 700, f1: 350, dur: 0.25, vol: 0.05, type: 'triangle', delay: 0.15, vib: 0.05, vibRate: 12 }); },
+    splat() { hiss({ dur: 0.25, vol: 0.18, f: 900, f1: 300, type: 'lowpass', q: 4 }); synth({ f: 240, f1: 90, dur: 0.18, vol: 0.12, type: 'sine', vib: 0.2, vibRate: 30 }); },
+    click() { if (!throttle('click', 40)) return; synth({ f: 1800, dur: 0.03, vol: 0.06, type: 'triangle' }); hiss({ dur: 0.015, vol: 0.05, f: 5000 }); },
+    hover() { if (!throttle('hover', 60)) return; synth({ f: 2400, dur: 0.025, vol: 0.02, type: 'sine' }); },
   };
 
 

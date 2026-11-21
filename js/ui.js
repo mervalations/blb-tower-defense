@@ -126,13 +126,13 @@
           A.clip(d.bosses[0].intro);
         } else {
           banner('Level ' + d.level, 'Here come the ' + d.def.name + '!', 1600);
-          A.play('wave');
+          A.play('sting', d.def.theme);
         }
         break;
       }
       case 'allFolded': toast('Everyone folded. No looters this round.'); break;
       case 'waveCleared':
-        if (me && me.alive) { banner('Wave cleared!', 'Level ' + game.level + ' done &middot; the stash is safe', 1500, false, 'cleared'); A.play('coin'); }
+        if (me && me.alive) { banner('Wave cleared!', 'Level ' + game.level + ' done &middot; the stash is safe', 1500, false, 'cleared'); A.play('cleared'); }
         break;
       case 'kill':
         if (d.owner === me) A.play('coin');
@@ -152,6 +152,9 @@
   // ---------- HUD ----------
   const fmt = (n) => n >= 10000 ? (n / 1000).toFixed(n >= 100000 ? 0 : 1) + 'k' : String(n);
   let bannerTimer = 0;
+  document.addEventListener('click', (e) => { if (e.target.closest && e.target.closest('button')) A.play('click'); }, true);
+  document.addEventListener('mouseover', (e) => { const b = e.target.closest && e.target.closest('button'); if (b && !b.disabled && b !== ui.hoverBtn) { ui.hoverBtn = b; A.play('hover'); } else if (!b) ui.hoverBtn = null; });
+
   function banner(title, sub, ms, boss, kind) {
     const b = $('banner');
     b.innerHTML = '<h2>' + title + '</h2>' + (sub ? '<p>' + sub + '</p>' : '');
@@ -207,6 +210,8 @@
     $('tb-level').textContent = Math.min(30, Math.max(1, showLevel)) + ' / 30';
     $('tb-phase').textContent = ui.paused ? 'Paused' : PHASE[g.phase] || '';
     $('tb-timer').textContent = g.phase === 'hand' ? Math.max(0, Math.ceil(g.timer)) : '';
+    const secs = g.phase === 'hand' ? Math.ceil(g.timer) : -1;   // tick through the last 3 seconds of a hand
+    if (secs !== ui.lastSecs) { if (secs > 0 && secs <= 3) A.play('tick'); ui.lastSecs = secs; }
     $('tb-next-label').textContent = g.phase === 'hand' ? 'Next' : 'Wave';
     $('tb-next').textContent = g.phase === 'hand' ? levelText(g.nextLevelDef()) : levelText(g.levelDef());
     $('tb-gold').textContent = me.gold;

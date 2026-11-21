@@ -9,6 +9,7 @@ window.PTD = window.PTD || {};
   const T = window.THREE;
   const TAU = Math.PI * 2;
   const W2T = (x, y, h) => new T.Vector3(x, h || 0, -y);
+  const sound = (name, arg) => { if (PTD.Audio) PTD.Audio.play(name, arg); };
   const fmtDmg = (n) => n >= 10000 ? (n / 1000).toFixed(n >= 100000 ? 0 : 1) + 'k' : String(Math.round(n));
   const FELT_H = 44;   // buildable felt is raised; lanes are channels cut into the table
 
@@ -607,7 +608,7 @@ window.PTD = window.PTD || {};
       const S = R * 2.5 * (c.variant === 3 ? 1.3 : 1);   // crew leaders walk in a size bigger
       const holder = new T.Group(); holder.scale.setScalar(S); holder.add(ch.rig); root.add(holder);
       this.addHealthBar(root, S * 2.4, c.variant === 3 ? 130 : 100, false);
-      root.userData = { rig: holder, anim: ch.anim, flash: ch.flash, detail: ch.detail, lastHp: c.hp, hitT: 0 };
+      root.userData = { rig: holder, anim: ch.anim, flash: ch.flash, detail: ch.detail, lastHp: c.hp, hitT: 0, owner: c.owner, leader: c.variant === 3 };
       this.scene.add(root);
       return root;
     }
@@ -623,7 +624,7 @@ window.PTD = window.PTD || {};
       const aura = new T.Mesh(geo('aura', () => new T.RingGeometry(1.2, 1.6, 48)), new T.MeshBasicMaterial({ color: new T.Color('#ffcf40').multiplyScalar(0.8), transparent: true, opacity: 0.35, depthWrite: false, blending: T.AdditiveBlending, side: T.DoubleSide }));
       aura.rotation.x = -Math.PI / 2; aura.position.y = 0.03; holder.add(aura);
       this.addHealthBar(root, R * 8.4, 340, true);
-      root.userData = { rig: holder, flash: m.flash, headG: m.head, face: m.face, faceMat: m.faceMat, boss: b, aura, lastHp: c.hp, hitT: 0, faceReady: false, anim: m.anim, palms: m.palms };
+      root.userData = { rig: holder, flash: m.flash, headG: m.head, face: m.face, faceMat: m.faceMat, boss: b, aura, lastHp: c.hp, hitT: 0, faceReady: false, anim: m.anim, palms: m.palms, owner: c.owner };
       this.scene.add(root);
       return root;
     }
@@ -681,6 +682,7 @@ window.PTD = window.PTD || {};
           if (!ud.landed && k > 0.37) {   // first touchdown of the bounce
             ud.landed = true;
             this.shake = Math.max(this.shake, 150);
+            if (this.mine(c)) sound('land');
             this.game.fx.push({ kind: 'ring', x: c.x, y: c.y, t: 0, life: 0.9, color: '#ffcf40', r: 750 });
             this.burst(W2T(c.x, c.y, 40), '#ffcf40', 34, 560, 0.8);
             this.burst(W2T(c.x, c.y, 20), '#d9c3a0', 20, 300, 0.9);
@@ -697,7 +699,7 @@ window.PTD = window.PTD || {};
           if (now - (ud.sparkT || 0) > 90 && this.view.zoom > 0.07) { ud.sparkT = now; this.burst(o.position.clone().setY(hitY), '#fff3c4', 3, 240, 0.16); }
           // damage numbers on your own lane, added up so fast towers don't spam
           const me = g.human;
-          if (me && c.owner === me.id) ud.dmgAcc = (ud.dmgAcc || 0) + (ud.lastHp - c.hp);
+          if (me && c.owner === me.id) { ud.dmgAcc = (ud.dmgAcc || 0) + (ud.lastHp - c.hp); sound('hit'); }
         }
         ud.lastHp = c.hp;
         ud.dmgT = (ud.dmgT || 0) - dt;
@@ -713,6 +715,7 @@ window.PTD = window.PTD || {};
           const aw = ud.boss && ud.boss.introMove === 'armwrestle';   // arm-wrestle slam lands later than the ground-pound
           if (!ud.slammed && intro >= (aw ? 3.15 : 2.25)) {   // ground-pound shockwave
             ud.slammed = true; this.shake = Math.max(this.shake, 170);
+            if (this.mine(c)) sound('slam');
             this.game.fx.push({ kind: 'ring', x: c.x, y: c.y, t: 0, life: 0.8, color: '#ffffff', r: 900 });
             this.burst(W2T(c.x, c.y, 30), '#d9c3a0', 26, 420, 0.8);
           }
@@ -723,13 +726,14 @@ window.PTD = window.PTD || {};
           fall = 1 - c.fallT / PTD.RULES.fallTime;
           if (!ud.thudded && fall >= 0.22) {   // face-plant: screen shake and a puff of dust
             ud.thudded = true; this.shake = Math.max(this.shake, 90);
+            if (this.mine(c)) sound('thud');
             this.burst(W2T(c.x, c.y, 30), '#d9c3a0', 18, 300, 0.7);
           }
         } else ud.thudded = false;
         let slime = null;
         if (ud.boss && ud.boss.slime && !(c.wait > 0)) {   // cosmetic: every 8 s he blasts white slime from both palms
           ud.slimeT = (ud.slimeT == null ? 8 : ud.slimeT) - dt;
-          if (ud.slimeT <= 0) { ud.slimeT += 8; ud.slimeFor = 1.3; }
+          if (ud.slimeT <= 0) { ud.slimeT += 8; ud.slimeFor = 1.3; if (this.mine(c)) sound('splat'); }
           if (ud.slimeFor > 0) {
             ud.slimeFor -= dt; slime = 1 - ud.slimeFor / 1.3;
             if (slime > 0.12) this.slimeSpray(ud, ud.rig.rotation.y);
@@ -773,6 +777,8 @@ window.PTD = window.PTD || {};
       for (const [id, o] of this.creepObjs) {
         if (seen.has(id)) continue;
         const big = !!o.userData.headG;
+        const me = this.game.human;
+        if (me && o.userData.owner === me.id && !big) sound(o.userData.leader ? 'leaderPop' : 'pop');
         const at = o.position.clone();
         this.poof(at.clone().setY(70), big ? 14 : 7, big ? 1.8 : 1);
         this.burst(at.clone().setY(110), '#ffe066', big ? 18 : 7, big ? 520 : 300, 0.5);
@@ -1150,6 +1156,8 @@ window.PTD = window.PTD || {};
       }
       return null;
     }
+
+    mine(c) { const me = this.game.human; return !!me && c.owner === me.id; }
 
     // Cinematic touches driven by game events (called from the UI's event handler).
     event(type, d) {
