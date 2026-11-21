@@ -10,8 +10,8 @@ PTD.BOSSES = [
   { name: 'Fuller', title: 'Level 12 Boss', image: 'assets/bosses/fuller.jpg', color: '#1f618d', intro: 'mic0035', defeat: 'back-shots' },
   { name: 'Marvin', title: 'Level 18 Boss', image: 'assets/bosses/marvin.jpg', color: '#7d3c98', intro: 'who-wants-back-shots', defeat: 'back-shots' },
   { name: 'Smooth', title: 'Level 24 Boss', image: 'assets/bosses/smooth.jpg', color: '#1b1b1b', intro: 'smooth.m4a', defeat: 'back-shots' },
-  { name: 'Tree', title: 'Final Boss Tag Team', image: 'assets/bosses/tree.jpg', color: '#196f3d', intro: 'rocky-theme', defeat: 'back-shots' },
-  { name: 'Giga Chad', title: 'Final Boss Tag Team', image: 'assets/bosses/gigachad.jpg', color: '#b8860b', intro: 'rocky-theme', defeat: 'back-shots' },
+  { name: 'Tree', title: 'Final Boss Tag Team', image: 'assets/bosses/tree.jpg', color: '#196f3d', intro: 'treeple.m4a', defeat: 'back-shots' },
+  { name: 'Giga Chad', title: 'Final Boss Tag Team', image: 'assets/bosses/gigachad.jpg', color: '#b8860b', intro: 'treeple.m4a', defeat: 'back-shots' },
 ];
 
 // Played whenever the final boss shells one of your towers.
