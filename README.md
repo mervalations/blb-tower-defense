@@ -50,6 +50,7 @@ The original was built for 8 humans covering each other's lanes, so solo it's br
 | `js/art.js`, `js/render.js` | Procedural art and the 2D renderer |
 | `js/render3d.js` | 3D renderer (Three.js, hand-rolled bloom, raised felt terrain) |
 | `js/looters3d.js` | Detailed 3D looter characters, one design per looter type |
+| `js/towers3d.js` | Tower models: one per suit for single cards, one per hand type for combos (bigger hand, bigger tower) |
 | `js/bossfaces.js` | Boss faces inlined for the 3D view (regenerate with `python tools/embed-faces.py`) |
 | `js/audio.js` | Synthesised sound |
 | `js/net.js` | Online multiplayer (host-authoritative, PeerJS) |

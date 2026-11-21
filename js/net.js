@@ -364,7 +364,7 @@ PTD.Net = (function () {
           const t = g.towerById.get(e.tw), c = g.creepById.get(e.c);
           if (t && c && e.fx !== 'chain') {
             const st = t.stats;
-            g.shots.push({ x: t.x, y: t.y + 30, target: c, tx: c.x, ty: c.y, speed: st.speed || 900, fx: e.fx });
+            g.shots.push({ x: t.x, y: t.y + 30, target: c, tx: c.x, ty: c.y, speed: st.speed || 900, fx: e.fx, tower: t });
           }
           d.fx = e.fx; d.tower = { owner: t ? t.owner : -1 };
           break;

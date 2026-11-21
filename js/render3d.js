@@ -110,6 +110,56 @@ window.PTD = window.PTD || {};
     x.fillText(PTD.RANK_LABEL[rank], 64, 66);
     return (cache.tex[key] = canvasTex(c));
   }
+  function woodTexture() {
+    if (cache.tex.wood) return cache.tex.wood;
+    const c = document.createElement('canvas'); c.width = 512; c.height = 128;
+    const x = c.getContext('2d');
+    x.fillStyle = '#4a2414'; x.fillRect(0, 0, 512, 128);
+    for (let i = 0; i < 90; i++) {
+      const y = Math.random() * 128, a = 0.05 + Math.random() * 0.12;
+      x.strokeStyle = Math.random() < 0.5 ? 'rgba(20,6,2,' + a + ')' : 'rgba(150,80,40,' + a + ')';
+      x.lineWidth = 0.6 + Math.random() * 2.2;
+      x.beginPath(); x.moveTo(0, y);
+      for (let px = 0; px <= 512; px += 32) x.lineTo(px, y + Math.sin(px * 0.02 + i) * 3 + Math.sin(px * 0.007 + i * 2) * 5);
+      x.stroke();
+    }
+    const t = canvasTex(c); t.wrapS = t.wrapT = T.RepeatWrapping; t.repeat.set(6, 1);
+    return (cache.tex.wood = t);
+  }
+  function shaftTexture() {
+    if (cache.tex.shaft) return cache.tex.shaft;
+    const c = document.createElement('canvas'); c.width = 4; c.height = 128;
+    const x = c.getContext('2d');
+    const g = x.createLinearGradient(0, 0, 0, 128);
+    g.addColorStop(0, 'rgba(255,255,255,0.9)'); g.addColorStop(0.5, 'rgba(255,255,255,0.25)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+    x.fillStyle = g; x.fillRect(0, 0, 4, 128);
+    return (cache.tex.shaft = canvasTex(c, false));
+  }
+  // A tiny dark casino "room" with warm lamps and neon strips, baked into an environment
+  // map so metal, gold and lacquer reflect something believable.
+  function buildEnvironment(gl) {
+    if (cache.env) return cache.env;
+    const env = new T.Scene();
+    const room = new T.Mesh(new T.BoxGeometry(100, 40, 100), new T.MeshBasicMaterial({ color: 0x1a0d10, side: T.BackSide }));
+    room.position.y = 15; env.add(room);
+    const floor = new T.Mesh(new T.PlaneGeometry(100, 100), new T.MeshBasicMaterial({ color: 0x2a0a10 }));
+    floor.rotation.x = -Math.PI / 2; floor.position.y = -4.9; env.add(floor);
+    for (const [x, z] of [[-18, -18], [18, -18], [18, 18], [-18, 18]]) {
+      const lamp = new T.Mesh(new T.CircleGeometry(5, 24), new T.MeshBasicMaterial({ color: new T.Color(0xffe2b0).multiplyScalar(6) }));
+      lamp.rotation.x = Math.PI / 2; lamp.position.set(x, 34, z); env.add(lamp);
+    }
+    const neon = [0xff3d6e, 0x3dd6ff, 0xffd23d, 0x8b5cff, 0x3dff8b];
+    for (let i = 0; i < 20; i++) {
+      const a = i / 20 * TAU;
+      const strip = new T.Mesh(new T.PlaneGeometry(6, 3), new T.MeshBasicMaterial({ color: new T.Color(neon[i % 5]).multiplyScalar(2.5), side: T.DoubleSide }));
+      strip.position.set(Math.cos(a) * 48, 4, Math.sin(a) * 48); strip.lookAt(0, 4, 0); env.add(strip);
+    }
+    const pm = new T.PMREMGenerator(gl);
+    cache.env = pm.fromScene(env, 0.035).texture;
+    pm.dispose();
+    return cache.env;
+  }
+
   function carpetTexture() {
     if (cache.tex.carpet) return cache.tex.carpet;
     const c = document.createElement('canvas'); c.width = c.height = 256;
@@ -143,10 +193,17 @@ window.PTD = window.PTD || {};
     void main(){
       vec3 c = texture2D(tScene, vUv).rgb + (texture2D(tB1, vUv).rgb * 0.7 + texture2D(tB2, vUv).rgb * 1.0) * strength;
       c = aces(c * exposure);
+      float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
+      c = mix(vec3(l), c, 0.96);                                   // slightly muted, filmic
+      c = clamp((c - 0.5) * 1.04 + 0.5, 0.0, 1.0);                 // contrast
+
       vec2 d = vUv - 0.5; float v = smoothstep(0.85, 0.25, length(d * vec2(1.1, 1.0)));
       c *= mix(0.55, 1.0, v);
       c = mix(c, flashColor, flash * (1.0 - v) * 0.9);
-      gl_FragColor = vec4(pow(c, vec3(1.0 / 2.2)), 1.0); }`;
+      vec3 o = pow(c, vec3(1.0 / 2.2));
+      float n = fract(sin(dot(vUv * 913.7, vec2(12.9898, 78.233))) * 43758.5453);
+      o += (n - 0.5) * 0.012;                                      // fine film grain, applied after gamma
+      gl_FragColor = vec4(o, 1.0); }`;
 
   class Post {
     constructor(gl) {
@@ -159,7 +216,7 @@ window.PTD = window.PTD || {};
       this.bright = sh(BRIGHT_FS, { tDiffuse: { value: null }, threshold: { value: 1.0 } });
       this.blur = sh(BLUR_FS, { tDiffuse: { value: null }, dir: { value: new T.Vector2() } });
       this.comp = sh(COMP_FS, { tScene: { value: null }, tB1: { value: null }, tB2: { value: null }, strength: { value: 1.0 },
-        exposure: { value: 0.9 }, flash: { value: 0 }, flashColor: { value: new T.Color(0.9, 0.05, 0.05) } });
+        exposure: { value: 0.82 }, flash: { value: 0 }, flashColor: { value: new T.Color(0.9, 0.05, 0.05) } });
       this.bloom = true;
     }
     setSize(w, h) {
@@ -230,12 +287,13 @@ window.PTD = window.PTD || {};
       const S = this.scene = new T.Scene();
       S.background = new T.Color(0x07050a);
       S.fog = new T.Fog(0x07050a, 9000, 30000);
+      S.environment = buildEnvironment(this.gl);
 
       // light: warm key light with shadows + cool fill
-      S.add(new T.HemisphereLight(0xffe2c0, 0x120e18, 0.32));
+      S.add(new T.HemisphereLight(0xffe2c0, 0x120e18, 0.18));
       const key = this.key = new T.DirectionalLight(0xffe6c4, 0.85);
       key.castShadow = this.quality === 'high';
-      key.shadow.mapSize.set(2048, 2048);
+      key.shadow.mapSize.set(this.quality === 'high' ? 4096 : 1024, this.quality === 'high' ? 4096 : 1024);
       key.shadow.bias = -0.0004; key.shadow.normalBias = 4;
       const sc = key.shadow.camera; sc.near = 100; sc.far = 9000;
       S.add(key); S.add(key.target);
@@ -243,16 +301,16 @@ window.PTD = window.PTD || {};
       // the table: board texture on felt, mahogany rim, casino carpet far below
       const size = map.size * map.cell;
       const board = this.boardTex = canvasTex(PTD.Art.boardCanvas(map, g.players, 6).canvas);
-      const top = new T.Mesh(new T.PlaneGeometry(size, size), new T.MeshStandardMaterial({ map: board, roughness: 0.92, metalness: 0 }));
+      const top = new T.Mesh(new T.PlaneGeometry(size, size), new T.MeshStandardMaterial({ map: board, roughness: 0.92, metalness: 0, envMapIntensity: 0.15, color: '#a6aaa4' }));
       top.rotation.x = -Math.PI / 2; top.receiveShadow = true;
       S.add(top);
-      const wood = std('#3b1d12', { roughness: 0.45, metalness: 0.1 });
+      const wood = mat('lacquer', () => new T.MeshPhysicalMaterial({ color: '#8a4a2a', map: woodTexture(), roughness: 0.38, metalness: 0, clearcoat: 1, clearcoatRoughness: 0.12 }));
       const half = size / 2, rimW = 420, rimH = 160;
       [[0, half + rimW / 2, size + rimW * 2, rimW], [0, -half - rimW / 2, size + rimW * 2, rimW], [half + rimW / 2, 0, rimW, size], [-half - rimW / 2, 0, rimW, size]].forEach(([x, y, w, d]) => {
         const m = new T.Mesh(new T.BoxGeometry(w, rimH + 900, d), wood);
         m.position.copy(W2T(x, y, rimH / 2 - 450)); m.receiveShadow = true; S.add(m);
       });
-      const floor = new T.Mesh(new T.PlaneGeometry(90000, 90000), new T.MeshStandardMaterial({ map: carpetTexture(), roughness: 1 }));
+      const floor = new T.Mesh(new T.PlaneGeometry(90000, 90000), new T.MeshStandardMaterial({ map: carpetTexture(), roughness: 1, envMapIntensity: 0.1, color: '#9a8a8a' }));
       floor.rotation.x = -Math.PI / 2; floor.position.y = -900; floor.receiveShadow = true;
       S.add(floor);
 
@@ -296,7 +354,7 @@ window.PTD = window.PTD || {};
     buildFelt(boardTex) {
       const map = this.game.map, cell = map.cell, size = map.size * cell, org = map.origin;
       const rects = this.rectsOf(0);
-      const m = new T.MeshStandardMaterial({ map: boardTex, roughness: 0.95, metalness: 0 });
+      const m = new T.MeshStandardMaterial({ map: boardTex, roughness: 0.95, metalness: 0, envMapIntensity: 0.15, color: '#a6aaa4' });
       m.onBeforeCompile = (sh) => {
         sh.vertexShader = 'varying float vSide;\n' + sh.vertexShader.replace('#include <uv_vertex>', `#include <uv_vertex>
           { vec4 wp = modelMatrix * instanceMatrix * vec4(position, 1.0);
@@ -345,14 +403,15 @@ window.PTD = window.PTD || {};
         return !(Math.abs(cx) < 700 && Math.abs(cy) < 700) && !(edge && (r.x1 - r.x0 > 300 || r.y1 - r.y0 > 300));
       });
       const H = 150;
-      const body = new T.InstancedMesh(new T.BoxGeometry(1, 1, 1), std('#3a1c12', { roughness: 0.32, metalness: 0.15 }), keep.length);
-      const cap = new T.InstancedMesh(new T.BoxGeometry(1, 1, 1), std('#2a130c', { roughness: 0.25, metalness: 0.2 }), keep.length);
+      const lacquer = mat('lacquerWall', () => new T.MeshPhysicalMaterial({ color: '#7a3c22', map: woodTexture(), roughness: 0.35, clearcoat: 1, clearcoatRoughness: 0.1 }));
+      const body = new T.InstancedMesh(new T.BoxGeometry(1, 1, 1), lacquer, keep.length);
+      const cap = new T.InstancedMesh(new T.BoxGeometry(1, 1, 1), mat('lacquerCap', () => new T.MeshPhysicalMaterial({ color: '#3a1a0e', roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.1 })), keep.length);
       const d = new T.Object3D();
       keep.forEach((r, i) => {
         const w = (r.x1 - r.x0) * cell, h = (r.y1 - r.y0) * cell;
         const cx = map.origin + r.x0 * cell + w / 2, cy = map.origin + r.y0 * cell + h / 2;
         d.position.copy(W2T(cx, cy, H / 2)); d.scale.set(w, H, h); d.updateMatrix(); body.setMatrixAt(i, d.matrix);
-        d.position.y = H + 5; d.scale.set(w + 16, 10, h + 16); d.updateMatrix(); cap.setMatrixAt(i, d.matrix);
+        d.position.y = H + 3; d.scale.set(w + 10, 6, h + 10); d.updateMatrix(); cap.setMatrixAt(i, d.matrix);
       });
       body.castShadow = body.receiveShadow = true;
       this.scene.add(body); this.scene.add(cap);
@@ -431,6 +490,9 @@ window.PTD = window.PTD || {};
         const bulb = new T.Mesh(new T.SphereGeometry(90, 16, 12), glowMat('#fff1c4', 4)); bulb.position.y = -120; lamp.add(bulb);
         const cord = new T.Mesh(new T.CylinderGeometry(6, 6, 3000, 6), std('#111')); cord.position.y = 1650; lamp.add(cord);
         S.add(lamp);
+        // a soft visible beam of light under each lamp
+        const shaft = new T.Mesh(new T.CylinderGeometry(330, 1100, 3200, 40, 1, true), new T.MeshBasicMaterial({ map: shaftTexture(), color: new T.Color('#ffd9a0').multiplyScalar(0.03), transparent: true, depthWrite: false, blending: T.AdditiveBlending, side: T.DoubleSide, fog: false }));
+        shaft.position.copy(W2T(lx, ly, 1650)); S.add(shaft);
         const spot = new T.SpotLight(0xffd9a0, 1.1, 9000, 0.7, 0.75, 0);
         spot.position.copy(W2T(lx, ly, 3100)); spot.target.position.copy(W2T(lx, ly, 0));
         S.add(spot); S.add(spot.target);
@@ -450,69 +512,18 @@ window.PTD = window.PTD || {};
     makeTower(t) {
       const grp = new T.Group();
       grp.position.copy(W2T(t.x, t.y, FELT_H));
-      grp.userData.size = 1.45;   // models read better a bit larger than the 128-unit footprint
       const owner = this.game.players[t.owner];
-      const ring = new T.Mesh(geo('ownRing', () => new T.RingGeometry(58, 70, 40)), glowMat(owner.color, 2.2));
-      ring.rotation.x = -Math.PI / 2; ring.position.y = 2; grp.add(ring);
-      const o = { grp, born: performance.now(), kind: t.kind, ring };
-      if (t.kind === 'card') {
-        const ped = new T.Mesh(geo('ped', () => new T.CylinderGeometry(48, 56, 26, 6)), std('#24242e', { metalness: 0.7, roughness: 0.3 }));
-        ped.position.y = 13; ped.castShadow = ped.receiveShadow = true; grp.add(ped);
-        const S = PTD.SUITS[t.suit];
-        const holder = o.holder = new T.Group(); holder.position.y = 96; grp.add(holder);
-        const edge = std('#f4efe2');
-        const card = new T.Mesh(geo('cardBox', () => new T.BoxGeometry(84, 110, 3)),
-          [edge, edge, edge, edge, new T.MeshStandardMaterial({ map: cardFace(t.suit, t.rank), roughness: 0.4 }), new T.MeshStandardMaterial({ map: cardBack(), roughness: 0.4 })]);
-        card.castShadow = true; holder.add(card);
-        const aura = new T.Mesh(geo('cardAura', () => new T.PlaneGeometry(122, 150)), new T.MeshBasicMaterial({ map: glowTexture(), color: new T.Color(S.color).multiplyScalar(1.6), transparent: true, opacity: 0.55, depthWrite: false, blending: T.AdditiveBlending }));
-        aura.position.z = -4; holder.add(aura);
-        o.card = card; o.aura = aura;
-        card.userData.towerId = t.id; ped.userData.towerId = t.id;
-        o.phase = (t.id * 0.77) % TAU;
-      } else {
-        const C = PTD.COMBOS[t.type], col = C.color;
-        const s = t.scale;
-        const stack = new T.Group(); stack.scale.setScalar(s); grp.add(stack);
-        const chips = 2 + Math.min(7, t.type);
-        const side = new T.MeshStandardMaterial({ map: chipSideTexture(col), roughness: 0.35, metalness: 0.1 });
-        const face = std(col, { roughness: 0.35 });
-        const topMat = new T.MeshStandardMaterial({ map: chipTopTexture(col, t.rank), roughness: 0.35 });
-        for (let i = 0; i < chips; i++) {
-          const chip = new T.Mesh(geo('chip', () => new T.CylinderGeometry(58, 58, 13, 36)), [side, i === chips - 1 ? topMat : face, face]);
-          chip.position.set(((i * 37) % 7) - 3, 7 + i * 13.5, ((i * 53) % 7) - 3);
-          chip.rotation.y = i * 0.6;
-          chip.castShadow = chip.receiveShadow = true; chip.userData.towerId = t.id;
-          stack.add(chip);
-        }
-        const headY = 7 + chips * 13.5 + 26;
-        const head = o.head = new T.Group(); head.position.y = headY; stack.add(head);
-        const metal = std(t.type === 8 ? '#d4a62a' : '#2e3440', { metalness: 0.85, roughness: 0.28 });
-        const body = new T.Mesh(geo('turretBody', () => new T.SphereGeometry(34, 24, 16)), metal); body.castShadow = true; body.userData.towerId = t.id; head.add(body);
-        const core = new T.Mesh(geo('turretCore', () => new T.SphereGeometry(17, 16, 12)), glowMat(col, 3.5)); core.position.set(0, 10, 22); head.add(core);
-        const barrels = t.type >= 6 ? 2 : t.type === 4 ? 3 : 1;
-        for (let b = 0; b < barrels; b++) {
-          const off = barrels === 1 ? 0 : (b - (barrels - 1) / 2) * 22;
-          const bar = new T.Mesh(geo('barrel', () => new T.CylinderGeometry(7, 9, 74, 12)), metal);
-          bar.rotation.x = Math.PI / 2; bar.position.set(off, 0, 52); bar.castShadow = true; head.add(bar);
-          const tip = new T.Mesh(geo('tip', () => new T.CylinderGeometry(10, 10, 8, 12)), glowMat(col, 3));
-          tip.rotation.x = Math.PI / 2; tip.position.set(off, 0, 90); head.add(tip);
-        }
-        if (t.type === 8) {
-          const crown = o.crown = new T.Group(); crown.position.y = headY + 70; stack.add(crown);
-          const gold = glowMat('#ffd34d', 2.6);
-          const band = new T.Mesh(new T.CylinderGeometry(34, 34, 16, 24, 1, true), gold); crown.add(band);
-          for (let k = 0; k < 5; k++) {
-            const sp = new T.Mesh(geo('spike', () => new T.ConeGeometry(9, 30, 8)), gold);
-            sp.position.set(Math.cos(k / 5 * TAU) * 30, 22, Math.sin(k / 5 * TAU) * 30); crown.add(sp);
-          }
-          const beam = new T.Mesh(new T.CylinderGeometry(40, 70, 1400, 24, 1, true), new T.MeshBasicMaterial({ color: new T.Color('#ffd34d').multiplyScalar(0.5), transparent: true, opacity: 0.12, depthWrite: false, blending: T.AdditiveBlending, side: T.DoubleSide }));
-          beam.position.y = 700; grp.add(beam);
-        }
-        const tag = new T.Sprite(new T.SpriteMaterial({ map: textTexture(PTD.comboTitle(t.type, t.rank).replace(' High', ''), '#ffffff', 40), transparent: true, depthWrite: false }));
-        const asp = tag.material.map.userData.aspect;
-        tag.scale.set(46 * asp, 46, 1); tag.position.y = (headY + (t.type === 8 ? 140 : 90)) * s;
-        tag.visible = false; grp.add(tag); o.tag = tag;
-        o.yaw = (t.id * 1.3) % TAU;
+      const m = PTD.Towers3D.build(t, owner.color);
+      grp.add(m.root);
+      // gold ring under a selected hand card
+      const sel = new T.Mesh(geo('selRing', () => new T.TorusGeometry(70, 6, 8, 48)), glowMat('#ffd640', 2.6));
+      sel.rotation.x = Math.PI / 2; sel.position.y = 4; sel.visible = false; grp.add(sel);
+      const o = { grp, born: performance.now(), kind: t.kind, head: m.head, banner: m.banner, anim: m.anim, sel, height: m.height,
+        bannerY: m.banner.position.y, yaw: (t.id * 1.3) % TAU, fireT: -1 };
+      if (t.kind === 'combo') {
+        const tag = new T.Sprite(new T.SpriteMaterial({ map: textTexture(PTD.comboTitle(t.type, t.rank), '#ffffff', 40), transparent: true, depthWrite: false, depthTest: false }));
+        tag.scale.set(46 * tag.material.map.userData.aspect, 46, 1); tag.position.y = m.height + 40; tag.visible = false; tag.renderOrder = 9;
+        grp.add(tag); o.tag = tag;
       }
       this.scene.add(grp);
       return o;
@@ -522,38 +533,40 @@ window.PTD = window.PTD || {};
       const g = this.game, seen = new Set(), me = g.human;
       const focus = ui.inspect && ui.inspect.alive ? ui.inspect : ui.hoverTower;
       const aimNow = this.frame % 5 === 0;
+      const camYaw = Math.atan2(this.camera.position.x - this.view.x, this.camera.position.z + this.view.y);
+      const time = now / 1000;
       for (const t of g.towers) {
         if (!t.alive) continue;
         seen.add(t.id);
         let o = this.towerObjs.get(t.id);
         if (!o) { o = this.makeTower(t); this.towerObjs.set(t.id, o); }
         const age = (now - o.born) / 1000;
-        const pop = age < 0.6 ? 1 - Math.pow(1 - age / 0.6, 3) * Math.cos(age * 14) * 0.6 : 1;
-        o.grp.scale.setScalar(Math.max(0.05, pop) * o.grp.userData.size);
-        const mine = t.owner === me.id && t.inHand && g.phase === 'hand';
-        if (o.kind === 'card') {
-          const lift = t.selected ? 46 : 0;
-          o.holder.position.y += ((96 + lift + Math.sin(now / 600 + o.phase) * 6) - o.holder.position.y) * Math.min(1, dt * 10);
-          o.holder.rotation.y = Math.sin(now / 1400 + o.phase) * 0.35 + (t.flash > 0 ? Math.sin(now / 30) * 0.3 : 0);
-          o.aura.material.opacity = t.selected ? 1 : mine ? 0.8 : 0.45;
-          o.aura.material.color.set(t.selected ? '#ffd640' : PTD.SUITS[t.suit].color).multiplyScalar(t.selected ? 2.4 : 1.6);
-        } else {
+        const pop = age < 0.7 ? 1 - Math.pow(1 - age / 0.7, 3) * Math.cos(age * 13) * 0.55 : 1;
+        o.grp.scale.setScalar(Math.max(0.05, pop));
+        // the floating card always turns to face you; selected cards lift and glow
+        const lift = t.selected ? 34 : 0;
+        o.banner.position.y += ((o.bannerY + lift + Math.sin(time * 1.6 + t.id) * 5) - o.banner.position.y) * Math.min(1, dt * 10);
+        o.banner.rotation.y = camYaw + Math.sin(time * 0.9 + t.id) * 0.18;
+        o.sel.visible = !!t.selected;
+        if (o.sel.visible) o.sel.rotation.z += dt * 2;
+        const firing = (t.flash > 0) || (now - o.fireT < 160);
+        if (o.head) {
           if (aimNow) o.target = this.nearestCreep(t);
-          // head's +z is the barrel; rotation.y = atan2(dx, dz) points it at the target
           if (o.target && o.target.alive) o.yawWant = Math.atan2(o.target.x - t.x, -(o.target.y - t.y));
-          else o.yawWant = (o.yawWant || 0) + dt * 0.3;
-          let d = (o.yawWant - o.yaw + Math.PI * 3) % TAU - Math.PI;
+          else o.yawWant = (o.yawWant || o.yaw) + dt * 0.25;
+          const d = (o.yawWant - o.yaw + Math.PI * 3) % TAU - Math.PI;
           o.yaw += d * Math.min(1, dt * 8);
           o.head.rotation.y = o.yaw;
-          if (o.crown) o.crown.rotation.y += dt * 1.2;
-          o.tag.visible = focus === t;
+          o.head.position.z = firing ? -5 : o.head.position.z * 0.8;   // recoil
         }
-        o.ring.scale.setScalar(t.selected ? 1.25 : 1);
+        o.anim(time, dt, firing);
+        if (o.tag) o.tag.visible = focus === t;
       }
       for (const [id, o] of this.towerObjs) {
         if (seen.has(id)) continue;
-        this.burst(o.grp.position, '#ffb070', 14, 260);
+        this.burst(o.grp.position.clone().setY(FELT_H + 80), '#ffb070', 18, 320);
         this.scene.remove(o.grp);
+        o.grp.traverse(n => { if (n.isMesh && n.userData.ownGeo) n.geometry.dispose(); });
         this.towerObjs.delete(id);
       }
     }
@@ -693,13 +706,17 @@ window.PTD = window.PTD || {};
       for (const sh of g.shots) {
         seen.add(sh);
         let o = this.shotObjs.get(sh);
-        const [col, size] = COL[sh.fx] || COL.arrow;
+        const [col, baseSize] = COL[sh.fx] || COL.arrow;
+        const tw = sh.tower && sh.tower.id != null ? sh.tower : null;
+        const size = baseSize * (tw && tw.kind === 'combo' ? 1 + tw.type * 0.16 : 1);
+        if (!o && tw) { const to = this.towerObjs.get(tw.id); if (to) to.fireT = performance.now(); }
         if (!o) {
           o = this.glowSprite(col, size); this.scene.add(o); this.shotObjs.set(sh, o);
           o.userData.trail = [];
           if (sh.fx !== 'mortar') this.burst(W2T(sh.x, sh.y, 110 + FELT_H), col, 3, 120, 0.18);
         }
-        let h = 95;
+        let h = 150 + FELT_H;
+        if (tw) { const to = this.towerObjs.get(tw.id); if (to) { const tot = Math.hypot(sh.tx - tw.x, sh.ty - tw.y) || 1; const k = Math.min(1, Math.hypot(sh.x - tw.x, sh.y - tw.y) / tot); h = to.height * 0.55 * (1 - k) + 80 * k; } }
         if (sh.arc) {
           const tot = Math.hypot(sh.tx - sh.sx, sh.ty - sh.sy) || 1;
           const prog = 1 - Math.hypot(sh.tx - sh.x, sh.ty - sh.y) / tot;
@@ -849,6 +866,8 @@ window.PTD = window.PTD || {};
       const sh = this.shake, flat = Math.cos(pitch) * dist;
       this.camera.position.set(tx + Math.sin(yaw) * flat + (Math.random() - 0.5) * sh, Math.sin(pitch) * dist + (Math.random() - 0.5) * sh, tz + Math.cos(yaw) * flat);
       this.camera.lookAt(tx, 0, tz);
+      // fog starts just past what we're looking at, however far out the camera is
+      this.scene.fog.near = dist * 1.05; this.scene.fog.far = dist * 3.2;
       // keep the shadow box around what we're looking at
       const span = Math.min(6500, dist * 0.9 + 600);
       const sc = this.key.shadow.camera;
