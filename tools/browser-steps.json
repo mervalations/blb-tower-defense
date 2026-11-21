@@ -1,6 +1,12 @@
 [
-  {"eval": "document.getElementById('btn-start').click()", "wait": 500},
-  {"label": "ffwd final", "eval": "(()=>{const {game,renderer}=PTD.current; game.opts.allAI=true; game.human.human=false; let n=0; while(!(game.level===30&&game.phase==='spawn') && game.phase!=='over' && n<3000000){game.update(1/30);n++} for(let i=0;i<30*3.5;i++) game.update(1/30); const b=game.creeps.filter(c=>c.boss&&c.alive&&c.owner===0); if(b[0]){renderer.cam.x=b[0].x;renderer.cam.y=b[0].y-150;renderer.cam.zoom=0.42;} return {level:game.level, bosses:b.map(c=>PTD.BOSSES[c.bossIdx].name+' '+Math.round(c.hp))}})()", "wait": 200},
-  {"eval": "PTD.current.game.onEvent('waveStart',{level:30,def:PTD.LEVELS[29],bosses:[PTD.BOSSES[4],PTD.BOSSES[5]]})", "wait": 800, "shot": "23-final-tagteam"},
-  {"label": "end", "eval": "(()=>{const {game}=PTD.current; let n=0; while(game.phase!=='over' && n<3000000){game.update(1/30);n++} return {result:game.result.reason, gold:game.players.map(p=>p.gold)}})()"}
+  {"wait": 1500, "shot": "3d-01-menu"},
+  {"eval": "document.getElementById('btn-start').click()", "wait": 1500, "shot": "3d-02-board"},
+  {"label": "deal", "eval": "(()=>{const {game}=PTD.current; const p=game.human; p.deck.push({suit:2,rank:9},{suit:0,rank:13},{suit:1,rank:13},{suit:3,rank:13},{suit:2,rank:13}); let n=0; const used=[]; for(const s of p.spots){ if(used.some(u=>Math.hypot(u.x-s.x,u.y-s.y)<350)) continue; if(game.deal(p,s.x,s.y)){n++;used.push(s);} if(n>=5) break;} p.hand.slice(0,4).forEach(t=>t.selected=true); return p.hand.map(t=>t.title)})()", "wait": 1200, "shot": "3d-03-dealt"},
+  {"key": "c", "code": "KeyC", "text": "c", "wait": 300},
+  {"label": "ai", "eval": "(()=>{const {game}=PTD.current; for(let i=0;i<30*8;i++) game.update(1/30); return game.players.map(p=>p.handTitle)})()", "wait": 600},
+  {"label": "zoom", "eval": "(()=>{const {game,renderer}=PTD.current; const t=game.human.hand.find(t=>t.kind==='combo'); renderer.cam.x=t.x+200; renderer.cam.y=t.y-300; renderer.cam.zoom=0.42; return t.title})()", "wait": 1500, "shot": "3d-04-closeup"},
+  {"key": " ", "code": "Space", "text": " ", "wait": 300},
+  {"label": "wave", "eval": "(()=>{const {game,renderer}=PTD.current; game.opts.allAI=true; game.human.human=false; for(let i=0;i<30*14;i++) game.update(1/30); const c=game.creeps.find(c=>c.alive&&c.owner===0); if(c){renderer.cam.x=c.x; renderer.cam.y=c.y-200; renderer.cam.zoom=0.3;} return {phase:game.phase, creeps:game.creeps.length}})()", "wait": 1500, "shot": "3d-05-wave"},
+  {"label": "boss", "eval": "(()=>{const {game,renderer}=PTD.current; let n=0; while(!(game.level===6&&game.phase==='spawn') && game.phase!=='over' && n<400000){game.update(1/30);n++} for(let i=0;i<30*3.5;i++) game.update(1/30); const b=game.creeps.find(c=>c.boss&&c.alive&&c.owner===0); if(b){renderer.cine=null; renderer.cam.x=b.x; renderer.cam.y=b.y-250; renderer.cam.zoom=0.55;} return !!b})()", "wait": 2500, "shot": "3d-06-boss"},
+  {"label": "fps", "eval": "(async()=>{let n=0; const t0=performance.now(); await new Promise(r=>{function f(){n++; if(performance.now()-t0<2000) requestAnimationFrame(f); else r();} requestAnimationFrame(f);}); return Math.round(n/2)+' fps (headless software GL), quality='+PTD.Renderer3D.quality})()"}
 ]

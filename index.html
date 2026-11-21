@@ -7,7 +7,7 @@
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-<canvas id="view"></canvas>
+<div id="stage"><canvas id="view"></canvas><canvas id="view3d"></canvas></div>
 
 <div id="hud" class="hidden">
   <div id="topbar">
@@ -61,6 +61,9 @@
     <div class="field">Difficulty
       <div id="in-mode" class="seg"></div>
       <div id="mode-desc" class="muted"></div>
+    </div>
+    <div class="field">Graphics
+      <div id="in-gfx" class="seg"></div>
     </div>
     <div class="field">Rival gamblers
       <div id="in-rivals" class="seg"></div>
@@ -148,11 +151,14 @@
 <script src="js/mapdata.js"></script>
 <script src="js/data.js"></script>
 <script src="js/bosses.js"></script>
+<script src="js/bossfaces.js"></script>
 <script src="js/poker.js"></script>
 <script src="js/game.js"></script>
 <script src="js/art.js"></script>
 <script src="js/audio.js"></script>
 <script src="js/render.js"></script>
+<script src="js/lib/three.min.js"></script>
+<script src="js/render3d.js"></script>
 <script src="js/net.js"></script>
 <script src="js/ui.js"></script>
 </body>

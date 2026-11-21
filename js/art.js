@@ -296,7 +296,7 @@ PTD.Art = (function () {
   const faceImgs = {};
   function bossFace(b) {
     if (!b.image) return null;
-    if (!faceImgs[b.image]) { const im = new Image(); im.src = b.image; faceImgs[b.image] = im; }
+    if (!faceImgs[b.image]) { const im = new Image(); im.src = (PTD.BOSS_FACES && PTD.BOSS_FACES[b.image]) || b.image; faceImgs[b.image] = im; }
     const im = faceImgs[b.image];
     return im.complete && im.naturalWidth ? im : null;
   }

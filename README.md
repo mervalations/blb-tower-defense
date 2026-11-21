@@ -8,6 +8,10 @@ Same map layout, rules and numbers, with all-new original art and sound. No Warc
 ## Play
 Double-click `index.html`. It runs in any modern browser, offline, with nothing to install.
 
+## Graphics
+Pick on the menu: **3D Ultra** (lighting, shadows, bloom glow, particles), **3D Fast** (no shadows or bloom, for older machines), or **Classic 2D**.
+Ultra drops to Fast automatically if the frame rate struggles. The 3D view uses Three.js r158 (bundled in `js/lib/`, MIT licence).
+
 ## Play online with friends
 - **Play Online:** everyone who presses it lands at the shared public table. The first person there hosts, and anyone can press Start.
 - **Private Table:** you get a 5-letter room code and an invite link (`?table=CODE`) to send friends.
@@ -38,7 +42,9 @@ The original was built for 8 humans covering each other's lanes, so solo it's br
 | `js/data.js` | Rules, towers, levels, tip odds |
 | `js/poker.js` | Deck and hand evaluation |
 | `js/game.js` | Simulation and AI rivals (no DOM; runs headless) |
-| `js/art.js`, `js/render.js` | Procedural art and the renderer |
+| `js/art.js`, `js/render.js` | Procedural art and the 2D renderer |
+| `js/render3d.js` | 3D renderer (Three.js, hand-rolled bloom) |
+| `js/bossfaces.js` | Boss faces inlined for the 3D view (regenerate with `python tools/embed-faces.py`) |
 | `js/audio.js` | Synthesised sound |
 | `js/net.js` | Online multiplayer (host-authoritative, PeerJS) |
 | `js/ui.js` | HUD, lobby, input, main loop |

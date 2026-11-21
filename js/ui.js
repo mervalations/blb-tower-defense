@@ -1,12 +1,12 @@
 // HUD, menus, input and the main loop.
 (function () {
   const $ = (id) => document.getElementById(id);
-  const canvas = $('view');
+  const canvas = $('stage');   // input surface; the active renderer draws into #view (2D) or #view3d
   const A = PTD.Audio;
 
   let game = null, demo = null, renderer = null, net = null;   // net: PTD.Net.Host or Client while online
   const ui = { shellWarned: 0, ghost: null, hoverTower: null, inspect: null, speed: 1, paused: false, foldArmed: 0, keys: {}, winners: new Set() };
-  const settings = { mode: 1, rivals: 3, name: 'You' };
+  const settings = { mode: 1, rivals: 3, name: 'You', gfx: 'ultra' };
   try { Object.assign(settings, JSON.parse(localStorage.getItem('ptd.settings') || '{}')); } catch (e) { /* storage optional */ }
   const saveSettings = () => { try { localStorage.setItem('ptd.settings', JSON.stringify(settings)); } catch (e) { /* ignore */ } };
 
@@ -26,6 +26,19 @@
   buildSeg($('in-rivals'), [0, 1, 2, 3, 4, 5, 6, 7].map(n => ({ label: n ? String(n) : 'Solo', value: n })), settings.rivals, v => { settings.rivals = v; });
   $('in-name').value = settings.name;
   refreshModeDesc();
+  const GFX = [{ label: '3D Ultra', value: 'ultra' }, { label: '3D Fast', value: 'fast' }, { label: 'Classic 2D', value: '2d' }];
+  buildSeg($('in-gfx'), GFX, settings.gfx, v => { settings.gfx = v; saveSettings(); if (!game) startDemo(); });
+
+  // Picks the renderer for the current graphics setting (falls back to 2D without WebGL2).
+  function makeRenderer(g) {
+    if (renderer && renderer.dispose) renderer.dispose();
+    const use3d = settings.gfx !== '2d' && PTD.Renderer3D && PTD.Renderer3D.supported();
+    $('view').classList.toggle('off', use3d);
+    $('view3d').classList.toggle('off', !use3d);
+    if (!use3d) return new PTD.Renderer($('view'), g);
+    PTD.Renderer3D.quality = settings.gfx === 'fast' ? 'low' : 'high';
+    return new PTD.Renderer3D($('view3d'), g);
+  }
 
   $('btn-start').onclick = () => {
     A.unlock();
@@ -42,7 +55,7 @@
     game = null;
     demo = new PTD.Game({ allAI: true, rivals: 7, mode: 0, seed: (Math.random() * 1e9) | 0 });
     demo.start();
-    renderer = new PTD.Renderer(canvas, demo);
+    renderer = makeRenderer(demo);
     renderer.cam.zoom = renderer.clampZoom(Math.min(renderer.W, renderer.H) / 7000);
   }
 
@@ -56,7 +69,7 @@
     ui.inspect = null; ui.ghost = null; ui.winners = new Set(); ui.speed = 1; ui.paused = false;
     $('btn-speed').textContent = '1x';
     game = g;
-    renderer = new PTD.Renderer(canvas, game);
+    renderer = makeRenderer(game);
     renderer.fitPlayer(game.human);
     PTD.current = { game, renderer, ui };   // handy for debugging from the console
     $('menu').classList.add('hidden');
@@ -70,6 +83,7 @@
   // ---------- events from the simulation ----------
   function onEvent(type, d) {
     const me = game && game.human;
+    if (renderer && renderer.event && game) renderer.event(type, d);
     switch (type) {
       case 'handStart':
         ui.winners = new Set();
@@ -360,7 +374,7 @@
     if (!game) return;
     const w = renderer.screenToWorld(sx, sy);
     const g = game, me = g.human;
-    const t = g.towerAt(w.x, w.y);
+    const t = (renderer.pickTower && renderer.pickTower(sx, sy)) || g.towerAt(w.x, w.y);
     ui.hoverTower = t;
     if (g.phase === 'hand' && me.alive && !me.folded && me.dealsLeft > 0 && !t) {
       const s = g.map.snap(w.x, w.y);
@@ -372,7 +386,7 @@
     if (!game || ui.paused) return;
     const g = game, me = g.human;
     const w = renderer.screenToWorld(sx, sy);
-    const t = g.towerAt(w.x, w.y);
+    const t = (renderer.pickTower && renderer.pickTower(sx, sy)) || g.towerAt(w.x, w.y);
     if (t) {
       if (t.owner === me.id && t.inHand && g.toggleSelect(me, t)) A.play('select');
       ui.inspect = t;
