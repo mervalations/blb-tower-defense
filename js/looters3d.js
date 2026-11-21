@@ -758,6 +758,41 @@ window.PTD = window.PTD || {};
     const orbit = pivot(rig, [0, 1.6, 0]);
     for (let k = 0; k < 4; k++) { const cp = cardPlane(k, 14, 0.36); cp.position.set(Math.cos(k / 4 * TAU) * 1.2, Math.sin(k) * 0.15, Math.sin(k / 4 * TAU) * 1.2); cp.rotation.y = -k / 4 * TAU; orbit.add(cp); }
 
+    // introMove 'armwrestle': a table and a challenger pop up in front of the boss during the
+    // entrance. The stage sits beside the rig (the renderer adds it to the same holder), so the
+    // boss's lean doesn't tip the table. Wrestling arm is arms[0] (x < 0); the shield stays free.
+    let stage = null, lock = null, opp = null, oppBody = null, oppArm = null;
+    const AW = boss.introMove === 'armwrestle';
+    const LX = -0.64 * W, LZ = 1.18, OZ = LZ + 1.06;          // where the hands meet; challenger's spot
+    if (AW) {
+      stage = new T.Group(); stage.visible = false;
+      const table = pivot(stage, [LX, 0, LZ]);
+      const woodM = wood('#8d5a2b');
+      part(table, cyl(), woodM, [0.42, 0.06, 0.42], [0, 0.82, 0]).castShadow = true;
+      part(table, cyl(), woodM, [0.07, 0.8, 0.07], [0, 0.4, 0]);
+      part(table, cyl(), woodM, [0.3, 0.05, 0.3], [0, 0.025, 0]);
+      lock = pivot(table, [0, 0.85, 0]);                     // the locked forearms, hinged at the table top
+      part(lock, cyl(), jacket, [0.06, 0.36, 0.06], [0.05, 0.18, -0.03]);
+      part(lock, cyl(), skinM, [0.055, 0.36, 0.055], [-0.05, 0.18, 0.03]);
+      part(lock, sph(), mat('#f4f4f4'), [0.13, 0.13, 0.13], [0.02, 0.38, -0.02]);
+      part(lock, sph(), skinM, [0.11, 0.11, 0.11], [-0.03, 0.38, 0.04]);
+      // the challenger: an anonymous gym bro in a grey tank top, facing the boss
+      opp = pivot(stage, [LX + 0.46, 0, OZ]); opp.rotation.y = Math.PI; opp.scale.setScalar(0.9);
+      oppBody = pivot(opp, [0, 0, 0]);
+      const tank = fabric('#8e9aa6'), shorts = fabric('#2c3e50');
+      for (const s2 of [-1, 1]) part(oppBody, cap(), shorts, [0.15, 0.3, 0.15], [s2 * 0.2, 0.55, 0]).castShadow = true;
+      part(oppBody, sph(), tank, [0.42, 0.5, 0.34], [0, 1.25, 0]).castShadow = true;
+      part(oppBody, sph(), skinM, [0.26, 0.26, 0.26], [0, 1.95, 0]).castShadow = true;
+      part(oppBody, cyl(), fabric('#e74c3c'), [0.265, 0.05, 0.265], [0, 2.05, 0]);   // sweatband
+      for (const s2 of [-1, 1]) part(oppBody, sph(), mat('#111'), [0.035, 0.05, 0.02], [s2 * 0.09, 1.98, 0.24]);
+      for (const s2 of [-1, 1]) {
+        const sh = pivot(oppBody, [s2 * 0.46, 1.55, 0]);
+        part(sh, cap(), skinM, [0.11, 0.25, 0.11], [0, -0.32, 0]).castShadow = true;
+        part(sh, sph(), skinM, [0.11, 0.11, 0.11], [0, -0.66, 0]);
+        if (s2 > 0) oppArm = sh; else sh.rotation.z = -0.25;
+      }
+    }
+
     let quirk = 0, quirkT = 2.5;
     const smooth = (u) => u * u * (3 - 2 * u);
     const anim = (t, moving, dt, st) => {
@@ -767,6 +802,49 @@ window.PTD = window.PTD || {};
       // ---- intro choreography while the boss shows off at the door
       if (st.intro != null) {
         const it = st.intro;
+        if (AW && it >= 1.3) {
+          const e = (u) => smooth(Math.max(0, Math.min(1, u)));
+          // props pop up after he lands and shrink away just before he sets off
+          stage.visible = true;
+          stage.scale.setScalar(Math.max(0.001, e((it - 1.3) / 0.25) * (1 - e((it - 4.05) / 0.35))));
+          const SLAM = 3.15;
+          if (it < SLAM) {
+            // lock in, struggle, nearly lose, roar back, then slam
+            let th;
+            if (it < 2.3) th = Math.sin(t * 9) * 0.08;
+            else if (it < 2.7) th = -0.85 * e((it - 2.3) / 0.4) + Math.sin(t * 25) * 0.05;   // he's losing!
+            else if (it < 3.0) th = -0.85 + 1.25 * e((it - 2.7) / 0.3);                   // ...comeback
+            else th = 0.4 + 1.05 * e((it - 3.0) / 0.15);                                   // SLAM
+            lock.rotation.x = th;
+            const lean = 0.35 * e((it - 1.3) / 0.3), strain = Math.sin(t * 30) * 0.03;
+            rig.position.y = 0; rig.rotation.x = lean + strain;
+            torso.scale.setScalar(1 + 0.05 * Math.abs(Math.sin(t * 12)));
+            torso.rotation.y = 0.15 + strain;
+            arms[0].rotation.x = -0.75 * e((it - 1.3) / 0.3) - th * 0.35; arms[0].rotation.z = 0.12;
+            arms[1].rotation.x = -0.5; arms[1].rotation.z = 0.5;                       // shield arm braced out
+            legs[0].rotation.x = -0.45; legs[1].rotation.x = 0.3;
+            opp.position.set(LX + 0.46, 0, OZ);
+            oppBody.rotation.set(0.35 + strain, 0, 0);
+            oppArm.rotation.x = -0.75 + th * 0.35;
+          } else {
+            // the challenger gets launched backwards, tumbling; the boss flexes and laughs
+            const k = Math.min(1, (it - SLAM) / 0.9);
+            lock.rotation.x = 1.45;
+            opp.position.set(LX + 0.46, Math.sin(k * Math.PI) * 1.3, OZ + k * 2.6);
+            oppBody.rotation.set(0.35 - k * 6.5, 0, 0);
+            oppArm.rotation.x = -2.6;
+            torso.rotation.y = 0;
+            const f = it - SLAM + 2.25;   // reuse the regular flex / laugh timings
+            let lA, rA, lZ = 0, rZ = 0, y = 0, lean = 0;
+            if (f < 3.4) { const kk = smooth(Math.min(1, (f - 2.25) / 0.3)); lA = rA = -2.4 * kk; lZ = -1.1 * kk; rZ = 1.1 * kk; torso.scale.setScalar(1 + 0.08 * kk * (1 + Math.sin(t * 10) * 0.3)); }
+            else { torso.scale.setScalar(1); rA = -1.55; lA = -0.4; lZ = 0.6; y = Math.abs(Math.sin(t * 14)) * 0.05; lean = -0.1; }
+            legs[0].rotation.x = 0; legs[1].rotation.x = 0;
+            arms[0].rotation.x = lA; arms[1].rotation.x = rA; arms[0].rotation.z = lZ; arms[1].rotation.z = rZ;
+            rig.position.y = y; rig.rotation.x = lean;
+          }
+          crown.rotation.y += dt;
+          return;
+        }
         let lA = 0, rA = 0, lZ = 0, rZ = 0, y = 0, lean = 0, legBend = 0;
         if (it < 1.3) { lA = rA = -2.8; lZ = -0.5; rZ = 0.5; legBend = 0.5; }                         // falling, arms flailing up
         else if (it < 2.0) { const k = smooth((it - 1.3) / 0.7); y = -0.3 * k; legBend = 0.9 * k; lA = rA = -0.6 * k; lean = 0.3 * k; }   // crouch
@@ -780,6 +858,7 @@ window.PTD = window.PTD || {};
         return;
       }
       torso.scale.setScalar(1);
+      if (stage) stage.visible = false;
       // ---- tripped over his own feet: st.fall runs 0..1 while the game holds him in place
       if (st.fall != null) {
         const f = st.fall, ease = (u) => smooth(Math.max(0, Math.min(1, u)));
@@ -826,9 +905,10 @@ window.PTD = window.PTD || {};
       if (bagPivot) { bagPivot.rotation.x = -arms[0].rotation.x - rig.rotation.x + (moving ? Math.sin(t * 5.5) * 0.15 : 0); bagPivot.rotation.z = -arms[0].rotation.z; }   // tote dangles straight down
     };
     if (PTD.Toon) PTD.Toon.cartoonize(rig, { width: 3.5, skip: (m) => m === face, style: { bright: 0.5, rim: '#7a5a30' } });
+    if (PTD.Toon && stage) PTD.Toon.cartoonize(stage, { width: 3.5, style: { bright: 0.5, rim: '#7a5a30' } });
     const flash = [];
     rig.traverse(o => { if (o.isMesh && o.material && o.material.emissive && !o.material.userData.shared && flash.indexOf(o.material) < 0) flash.push(o.material); });
-    return { rig, anim, flash: flash.slice(0, 6), head, faceMat, face, palms };
+    return { rig, anim, flash: flash.slice(0, 6), head, faceMat, face, palms, stage };
   }
 
   PTD.Looters3D = { build, buildBoss, SPECS, loadModels, MODELS };

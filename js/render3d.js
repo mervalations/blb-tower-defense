@@ -616,6 +616,7 @@ window.PTD = window.PTD || {};
       const holder = new T.Group(); holder.scale.setScalar(R * 2.0); root.add(holder);   // about 2.5x a looter's height
       const m = PTD.Looters3D.buildBoss(b);
       holder.add(m.rig);
+      if (m.stage) holder.add(m.stage);   // intro props (arm-wrestling table and challenger)
       const aura = new T.Mesh(geo('aura', () => new T.RingGeometry(1.2, 1.6, 48)), new T.MeshBasicMaterial({ color: new T.Color('#ffcf40').multiplyScalar(0.8), transparent: true, opacity: 0.35, depthWrite: false, blending: T.AdditiveBlending, side: T.DoubleSide }));
       aura.rotation.x = -Math.PI / 2; aura.position.y = 0.03; holder.add(aura);
       this.addHealthBar(root, R * 8.4, 340);
@@ -686,12 +687,13 @@ window.PTD = window.PTD || {};
         let intro = null;
         if (c.boss && c.wait > 0) {
           ud.introT = (ud.introT || 0) + dt; intro = ud.introT;
-          if (!ud.slammed && intro >= 2.25) {   // ground-pound shockwave
+          const aw = ud.boss && ud.boss.introMove === 'armwrestle';   // arm-wrestle slam lands later than the ground-pound
+          if (!ud.slammed && intro >= (aw ? 3.15 : 2.25)) {   // ground-pound shockwave
             ud.slammed = true; this.shake = Math.max(this.shake, 170);
             this.game.fx.push({ kind: 'ring', x: c.x, y: c.y, t: 0, life: 0.8, color: '#ffffff', r: 900 });
             this.burst(W2T(c.x, c.y, 30), '#d9c3a0', 26, 420, 0.8);
           }
-          if (!ud.flexed && intro >= 2.4) { ud.flexed = true; this.burst(o.position.clone().setY(c.radius * 5), '#ffe066', 22, 300, 0.9); }
+          if (!ud.flexed && intro >= (aw ? 3.3 : 2.4)) { ud.flexed = true; this.burst(o.position.clone().setY(c.radius * 5), '#ffe066', 22, 300, 0.9); }
         }
         let fall = null;
         if (c.fallT > 0) {
