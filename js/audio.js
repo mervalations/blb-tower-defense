@@ -264,7 +264,8 @@ PTD.Audio = (function () {
   // One voice clip at a time; a new one interrupts the old.
   function clip(name) {
     if (muted || !name) return;
-    if (!clips[name]) { clips[name] = new Audio('assets/sfx/' + name + '.mp3'); clips[name].preload = 'auto'; }
+    // names without an extension are .mp3; others (e.g. 'smooth.m4a') are used as given
+    if (!clips[name]) { clips[name] = new Audio('assets/sfx/' + name + (name.indexOf('.') >= 0 ? '' : '.mp3')); clips[name].preload = 'auto'; }
     if (voice && voice !== clips[name]) voice.pause();
     voice = clips[name];
     voice.currentTime = 0;
