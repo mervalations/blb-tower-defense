@@ -1,4 +1,6 @@
-# Poker TD
+# BLB Tower Defense
+
+Play it: https://mervalations.github.io/blb-tower-defense/
 
 A standalone remake of the Warcraft III custom map **Poker TD 2.2** (`Poke TD-version VN 2.2.w3x`).
 Same map layout, rules and numbers, with all-new original art and sound. No Warcraft assets are used.

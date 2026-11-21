@@ -98,6 +98,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .logo { display: flex; align-items: center; justify-content: center; gap: 12px; }
 .logo h1 { margin: 0 8px; font-family: Georgia, serif; font-size: 56px; color: var(--gold); text-shadow: 0 3px 0 #6b4b00, 0 0 24px rgba(255,211,77,0.35); }
 .logo-suit { font-size: 36px; }
+.logo h1 small { display: block; font-size: 22px; letter-spacing: 0.25em; text-transform: uppercase; text-align: center; color: #f3e6c2; text-shadow: none; margin-top: -6px; }
 .tagline { text-align: center; color: #f3e6c2; line-height: 1.5; }
 .field { display: block; margin: 14px 0; font-weight: 600; }
 .field input { display: block; margin-top: 6px; width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.2); background: #1d1519; color: var(--ink); font: inherit; }
