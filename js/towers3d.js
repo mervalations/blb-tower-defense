@@ -17,8 +17,8 @@ window.PTD = window.PTD || {};
   function mat(key, make) { if (!M[key]) { M[key] = make(); M[key].userData.shared = true; } return M[key]; }
   const std = (c, o) => mat('s' + c + JSON.stringify(o || {}), () => new T.MeshStandardMaterial(Object.assign({ color: c, roughness: 0.6, metalness: 0 }, o || {})));
   const metal = (c, r) => std(c, { metalness: 0.95, roughness: r == null ? 0.25 : r });
-  const stone = (c) => std(c || '#6b6560', { roughness: 0.85 });
-  const wood = (c) => std(c || '#6b4226', { roughness: 0.55 });
+  const stone = (c) => std(c ? T.Color.prototype.set.call(new T.Color(), c).offsetHSL(0, 0.05, 0.08).getStyle() : '#8a8178', { roughness: 0.85 });
+  const wood = (c) => std(c ? T.Color.prototype.set.call(new T.Color(), c).offsetHSL(0, 0.1, 0.06).getStyle() : '#8a5530', { roughness: 0.55 });
   const glow = (c, k) => mat('g' + c + k, () => { const m = new T.MeshBasicMaterial({ color: new T.Color(c).multiplyScalar(k || 2.5) }); return m; });
   const glass = (c, o) => mat('gl' + c + o, () => new T.MeshStandardMaterial({ color: c, roughness: 0.05, metalness: 0.2, transparent: true, opacity: o || 0.35, depthWrite: false }));
   const add = (o) => mat('a' + o.c + o.k + (o.o || 1), () => new T.MeshBasicMaterial({ color: new T.Color(o.c).multiplyScalar(o.k || 1.5), transparent: true, opacity: o.o || 1, depthWrite: false, blending: T.AdditiveBlending, side: T.DoubleSide }));
@@ -41,6 +41,54 @@ window.PTD = window.PTD || {};
     return o;
   }
   function group(parent, p, keep) { const g = new T.Group(); if (p) g.position.set(p[0], p[1], p[2]); if (keep) g.userData.keep = true; parent.add(g); return g; }
+
+  // ------------------------------------------------------------------ cartoon look
+  // Three flat bands of light (toon shading) and a thick dark outline around every solid part.
+  let toonRamp = null;
+  function ramp() {
+    if (toonRamp) return toonRamp;
+    toonRamp = new T.DataTexture(new Uint8Array([90, 90, 90, 255, 175, 175, 175, 255, 255, 255, 255, 255]), 3, 1, T.RGBAFormat);
+    toonRamp.minFilter = toonRamp.magFilter = T.NearestFilter; toonRamp.generateMipmaps = false; toonRamp.needsUpdate = true;
+    return toonRamp;
+  }
+  const toonCache = new Map();
+  function toon(m) {
+    if (!m || !m.isMeshStandardMaterial || m.transparent) return m;
+    if (toonCache.has(m.uuid)) return toonCache.get(m.uuid);
+    // metals keep a little extra brightness so gold still reads as gold
+    // toon materials skip PBR energy loss, so scale down to stay under the bloom threshold
+    const c = m.color.clone().multiplyScalar(m.metalness > 0.5 ? 0.62 : 0.5);
+    const t = new T.MeshToonMaterial({ color: c, map: m.map || null, gradientMap: ramp(), emissive: m.emissive ? m.emissive.clone() : new T.Color(0), emissiveMap: m.emissiveMap || null });
+    t.userData.shared = true;
+    toonCache.set(m.uuid, t);
+    return t;
+  }
+  let outlineMat = null;
+  function outline() {
+    if (outlineMat) return outlineMat;
+    outlineMat = new T.MeshBasicMaterial({ color: 0x120a06, side: T.BackSide });
+    outlineMat.onBeforeCompile = (sh) => {
+      sh.uniforms.ow = { value: 6.0 };
+      sh.vertexShader = 'uniform float ow;\n' + sh.vertexShader.replace('#include <begin_vertex>',
+        '#include <begin_vertex>\n transformed += normalize(normal) * ow / max(0.001, length(modelMatrix[0].xyz));');
+    };
+    outlineMat.userData.shared = true;
+    return outlineMat;
+  }
+  function cartoonize(root) {
+    const solids = [];
+    root.traverse(o => { if (o.isMesh && !o.userData.isOutline) solids.push(o); });
+    for (const o of solids) {
+      if (Array.isArray(o.material)) { o.material = o.material.map(toon); continue; }
+      const basic = o.material.isMeshBasicMaterial;
+      o.material = toon(o.material);
+      if (basic || o.material.transparent || o.material.blending === T.AdditiveBlending) continue;
+      const hull = new T.Mesh(o.geometry, outline());
+      hull.userData.isOutline = true; hull.userData.towerId = o.userData.towerId;
+      hull.castShadow = false; hull.raycast = () => {};
+      o.add(hull);
+    }
+  }
 
   // Merge every non-animated mesh under root into one mesh per material: a 30-part
   // tower becomes ~5 draw calls, which keeps hundreds of towers smooth.
@@ -76,6 +124,7 @@ window.PTD = window.PTD || {};
       mg.setAttribute('normal', new T.BufferAttribute(nor, 3));
       mg.setAttribute('uv', new T.BufferAttribute(uv, 2));
       mg.computeBoundingSphere();
+      mg.userData.flatNormals = true;
       const mesh = new T.Mesh(mg, b.mat);
       mesh.castShadow = b.shadow; mesh.receiveShadow = true;
       mesh.userData.towerId = towerId; mesh.userData.ownGeo = true;
@@ -338,6 +387,7 @@ window.PTD = window.PTD || {};
       scale = COMBO_SCALE[t.type] * (0.95 + (t.rank / 14) * 0.12);
     }
     mergeStatic(root, t.id);
+    cartoonize(root);
 
     // the card itself floats above the tower; combos get their hand orbiting instead
     const banner = group(root, [0, top + 46, 0], true);

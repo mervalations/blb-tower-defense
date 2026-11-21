@@ -178,7 +178,7 @@ PTD.Audio = (function () {
       if (playing || !on || !ensure()) return;
       playing = true;
       out().gain.cancelScheduledValues(ctx.currentTime);
-      out().gain.setTargetAtTime(0.55, ctx.currentTime, 0.8);
+      out().gain.setTargetAtTime(0.3, ctx.currentTime, 0.8);
       nextBeat = ctx.currentTime + 0.1; beat = 0; mood = want;
       timer = setInterval(tick, 50);
     }
@@ -204,13 +204,33 @@ PTD.Audio = (function () {
     'assets/music/td5.m4a', 'assets/music/td6.m4a', 'assets/music/td7.m4a'];
   const LOCAL_TRACKS = ['assets/music/local/td.mp3'];
   const TRACKS = location.protocol === 'file:' ? LOCAL_TRACKS.concat(PUBLIC_TRACKS) : PUBLIC_TRACKS;
+  // Background level for the soundtrack (0..1) and an "ambient" treatment: softened highs
+  // plus a gentle hall reverb. The effect chain needs the page to be served over http(s);
+  // from a double-clicked file the music still plays, just without the reverb.
+  const MUSIC_VOL = 0.2;
+  function ambience(el) {
+    if (location.protocol === 'file:' || !ensure()) return;
+    try {
+      const src = ctx.createMediaElementSource(el);
+      const tone = ctx.createBiquadFilter(); tone.type = 'lowpass'; tone.frequency.value = 2600; tone.Q.value = 0.4;
+      const dry = ctx.createGain(); dry.gain.value = 0.75;
+      const wet = ctx.createGain(); wet.gain.value = 0.4;
+      const verb = ctx.createConvolver();
+      const len = Math.floor(ctx.sampleRate * 3.2), ir = ctx.createBuffer(2, len, ctx.sampleRate);
+      for (let ch = 0; ch < 2; ch++) { const d = ir.getChannelData(ch); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2.6); }
+      verb.buffer = ir;
+      src.connect(tone); tone.connect(dry); tone.connect(verb); verb.connect(wet);
+      dry.connect(ctx.destination); wet.connect(ctx.destination);
+    } catch (e) { /* plain playback is fine */ }
+  }
+
   const Music = (function () {
     let el = null, idx = 0, on = true, failed = false, playing = false;
     function load() {
       if (el) return el;
       el = new Audio();
       el.preload = 'auto';
-      el.volume = 0.45;
+      el.volume = MUSIC_VOL;
       el.addEventListener('ended', () => { idx = (idx + 1) % TRACKS.length; el.src = TRACKS[idx]; if (playing) el.play().catch(() => {}); });
       let errors = 0;
       el.addEventListener('playing', () => { errors = 0; });
@@ -219,6 +239,7 @@ PTD.Audio = (function () {
         failed = true; if (playing) { playing = false; Synth.enable(true); }
       });
       el.src = TRACKS[idx];
+      ambience(el);
       return el;
     }
     function start() {
@@ -231,7 +252,7 @@ PTD.Audio = (function () {
     return {
       setMood(m) { Synth.setMood(m); },
       enable(v) { on = v; if (v) start(); else stop(); },
-      duck(v) { if (el) el.volume = v ? 0.12 : 0.45; },
+      duck(v) { if (el) el.volume = v ? MUSIC_VOL * 0.3 : MUSIC_VOL; },
       next() { if (!el) return; idx = (idx + 1) % TRACKS.length; el.src = TRACKS[idx]; if (playing) el.play().catch(() => {}); },
       start, stop,
       get on() { return on; },

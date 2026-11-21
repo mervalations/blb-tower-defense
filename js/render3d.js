@@ -563,6 +563,10 @@ window.PTD = window.PTD || {};
           o.head.position.z = firing ? -5 : o.head.position.z * 0.8;   // recoil
         }
         o.anim(time, dt, firing);
+        if (firing) o.kick = 1;
+        o.kick = Math.max(0, (o.kick || 0) - dt * 5);
+        const sq = 1 - Math.sin(o.kick * Math.PI) * 0.1, idle = 1 + Math.sin(time * 2.2 + t.id) * 0.012;
+        o.grp.scale.set(o.grp.scale.x / Math.sqrt(sq), o.grp.scale.y * sq * idle, o.grp.scale.z / Math.sqrt(sq));
         if (o.tag) o.tag.visible = focus === t;
       }
       for (const [id, o] of this.towerObjs) {
