@@ -373,10 +373,11 @@ PTD.Game = class {
     const sel = this.selected(p);
     const combo = PTD.Poker.evaluate(sel);
     const at = anchor && sel.indexOf(anchor) >= 0 ? anchor : sel[0];
-    for (const t of sel) this.removeTower(t);
+    // Combining uses up the whole hand: every card goes, only the combined tower is left.
+    for (const t of p.hand) if (t.alive) this.removeTower(t);
     const tower = this.addTower(p, at.x, at.y, { kind: 'combo', type: combo.type, rank: combo.rank });
     tower.inHand = true; tower.fresh = this.time;
-    p.hand = p.hand.filter(t => t.alive).concat([tower]);
+    p.hand = [tower];
     for (const t of p.hand) t.selected = false;
     this.towers = this.towers.filter(t => t.alive);
     p.combined = true; p.combo = combo; p.rating = combo.rating; p.handTitle = combo.title;

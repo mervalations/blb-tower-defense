@@ -219,7 +219,7 @@
     if (p.dealsLeft > 0) return 'Deal ' + p.dealsLeft + ' more card' + (p.dealsLeft > 1 ? 's' : '') + '. Each card is a tower.';
     if (p.combined) return 'Locked in: <b>' + p.handTitle + '</b>. Press <b>Ready</b> when you\'re set.';
     const combo = g.selectionCombo(p);
-    if (combo) return 'Selected <b>' + combo.title + '</b>. Press <b>Combine</b>!';
+    if (combo) return 'Selected <b>' + combo.title + '</b>. Press <b>Combine</b> to turn your whole hand into one tower!';
     const best = PTD.Poker.best(p.hand.map(t => ({ suit: t.suit, rank: t.rank })));
     const holding = best ? ' You\'re holding <b>' + best.combo.title + '</b>.' : '';
     if (!p.swapped) {

@@ -18,7 +18,7 @@ PTD.RULES = {
 };
 
 // HP curve for the solo modes (see Game.creepHp). Tuned with tools/sim.js; PTD_CURVE overrides it there.
-const CURVE = +(typeof process !== 'undefined' && process.env && process.env.PTD_CURVE) || 0.7;
+const CURVE = +(typeof process !== 'undefined' && process.env && process.env.PTD_CURVE) || 0.63;
 PTD.MODES = [
   { key: 'amateur', name: 'Amateur', hpMult: 0.75, curve: CURVE, bonusMult: 1, desc: 'Weaker looters. Learn the ropes.' },
   { key: 'pro', name: 'Professional', hpMult: 1.0, curve: CURVE, bonusMult: 1, desc: 'The intended solo challenge.' },
