@@ -603,7 +603,17 @@ window.PTD = window.PTD || {};
           o.head.rotation.y = o.yaw;
           o.head.position.z = firing ? -5 : o.head.position.z * 0.8;   // recoil
         }
-        o.anim(time, dt, firing);
+        const stunned = t.stunT > 0;
+        if (stunned && !o.dizzy) o.dizzy = this.makeDizzy(o);
+        if (o.dizzy) {
+          o.dizzy.visible = stunned;
+          if (stunned) {
+            o.dizzy.rotation.y += dt * 4;
+            o.dizzy.position.y = o.height * 1.02 + Math.sin(time * 6) * 6;
+            o.grp.rotation.z = Math.sin(time * 9 + t.id) * 0.05;   // wobbling, knocked silly
+          } else o.grp.rotation.z = 0;
+        }
+        o.anim(time, dt, firing && !stunned);
         if (firing) o.kick = 1;
         o.kick = Math.max(0, (o.kick || 0) - dt * 5);
         const sq = 1 - Math.sin(o.kick * Math.PI) * 0.1, idle = 1 + Math.sin(time * 2.2 + t.id) * 0.012;
@@ -617,6 +627,20 @@ window.PTD = window.PTD || {};
         o.grp.traverse(n => { if (n.isMesh && n.userData.ownGeo) n.geometry.dispose(); });
         this.towerObjs.delete(id);
       }
+    }
+
+    // A ring of spinning cartoon stars over a paralyzed tower.
+    makeDizzy(o) {
+      const g = new T.Group();
+      const tex = textTexture('\u2605', '#ffe066', 64);
+      const m = mat('dizzyStar', () => new T.SpriteMaterial({ map: tex, depthWrite: false }));
+      for (let i = 0; i < 4; i++) {
+        const s = new T.Sprite(m); const a = i / 4 * TAU;
+        s.position.set(Math.cos(a) * 85, (i % 2) * 16, Math.sin(a) * 85); s.scale.set(72, 72, 1);
+        g.add(s);
+      }
+      g.visible = false; o.grp.add(g);
+      return g;
     }
 
     nearestCreep(t) {

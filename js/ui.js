@@ -146,6 +146,11 @@
       case 'defeat': if (d.player !== me) toast(d.player.name + ' went broke!'); break;
       case 'bossAttack': if (d.creep.owner === me.id && performance.now() > ui.shellWarned) { ui.shellWarned = performance.now() + 8000; A.clip(PTD.BOSS_ATTACK_SFX); toast(PTD.BOSSES[d.creep.bossIdx].name + ' is shelling your towers!', true); } break;
       case 'towerDestroyed': if (d.tower.owner === me.id) A.play('boom'); break;
+      case 'towersStunned': {
+        const n = d.towers.filter(t => t.owner === me.id).length;
+        if (n) { A.play('dizzy'); const b = PTD.BOSSES[d.creep.bossIdx]; toast((b ? b.name : 'The boss') + ' fell and paralyzed ' + n + ' of your tower' + (n > 1 ? 's' : '') + '!', true); }
+        break;
+      }
       case 'gameOver': A.music.setMood('lounge'); setTimeout(() => showOver(d), 900); break;
       case 'shot': shotSound(d, me); break;
     }

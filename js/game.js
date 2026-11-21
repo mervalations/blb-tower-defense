@@ -625,6 +625,17 @@ PTD.Game = class {
     }
   }
 
+  tripQuake(c) {
+    const R = PTD.RULES.tripStunRadius, hit = [];
+    for (const t of this.towers) {
+      if (!t.alive || Math.hypot(t.x - c.x, t.y - c.y) > R) continue;
+      t.stunT = PTD.RULES.tripStun; hit.push(t);
+    }
+    this.fx.push({ kind: 'ring', x: c.x, y: c.y, t: 0, life: 0.6, color: '#ffe066', r: R });
+    if (hit.length) this.floatText(c.x, c.y + 170, 'PARALYZED!', '#ffe066');
+    this.emit('towersStunned', { creep: c, towers: hit });
+  }
+
   bossAttack(c) {
     const p = this.players[c.owner];
     const mine = this.towers.filter(t => t.alive && t.owner === p.id && !t.stats.invuln);
@@ -678,7 +689,13 @@ PTD.Game = class {
       if (c.trips) {
         c.tripT -= dt;
         if (c.tripT <= 0) { c.tripT += 8; c.fallT = PTD.RULES.fallTime; this.floatText(c.x, c.y + 120, 'TRIPPED!', '#ffffff'); }
-        if (c.fallT > 0) { c.fallT -= dt; continue; }
+        if (c.fallT > 0) {
+          c.fallT -= dt;
+          // the moment he face-plants, the shockwave paralyzes every tower close by
+          if (!c.quaked && c.fallT <= PTD.RULES.fallTime * 0.78) { c.quaked = true; this.tripQuake(c); }
+          continue;
+        }
+        c.quaked = false;
       }
       if (c.stunT > 0) { c.stunT -= dt; continue; }
       if (c.slowT > 0) { c.slowT -= dt; if (c.slowT <= 0) c.slowF = 1; }
@@ -699,6 +716,7 @@ PTD.Game = class {
     for (const t of this.towers) {
       if (!t.alive) continue;
       if (t.flash > 0) t.flash -= dt;
+      if (t.stunT > 0) { t.stunT -= dt; continue; }   // paralyzed: no firing, cooldown frozen
       t.cool -= dt;
       if (t.cool > 0) continue;
       const c = this.findTarget(t);

@@ -247,6 +247,12 @@ PTD.Audio = (function () {
     land() { synth({ f: 90, f1: 28, dur: 0.8, vol: 0.4, type: 'sine' }); hiss({ dur: 0.7, vol: 0.3, f: 700, f1: 120, type: 'lowpass', wet: 0.5 }); hiss({ dur: 0.15, vol: 0.15, f: 2500, delay: 0.02 }); },
     slam() { synth({ f: 140, f1: 50, dur: 0.4, vol: 0.35, type: 'sine' }); hiss({ dur: 0.12, vol: 0.25, f: 1600, q: 0.8 }); hiss({ dur: 0.5, vol: 0.1, f: 400, type: 'lowpass', delay: 0.05, wet: 0.6 }); },
     thud() { synth({ f: 110, f1: 45, dur: 0.3, vol: 0.3, type: 'sine' }); hiss({ dur: 0.2, vol: 0.12, f: 500, type: 'lowpass' }); synth({ f: 700, f1: 350, dur: 0.25, vol: 0.05, type: 'triangle', delay: 0.15, vib: 0.05, vibRate: 12 }); },
+    // towers knocked silly: a wobbly cartoon "boing" with tweeting stars
+    dizzy() {
+      synth({ f: 220, f1: 520, dur: 0.45, vol: 0.16, type: 'triangle', vib: 0.12, vibRate: 14, wet: 0.3 });
+      synth({ f: 90, f1: 40, dur: 0.3, vol: 0.25, type: 'sine' });
+      [2093, 2637, 2349, 2794].forEach((f, i) => synth({ f, f1: f * 1.15, dur: 0.12, vol: 0.05, type: 'sine', delay: 0.3 + i * 0.11, wet: 0.4 }));
+    },
     splat() { hiss({ dur: 0.25, vol: 0.18, f: 900, f1: 300, type: 'lowpass', q: 4 }); synth({ f: 240, f1: 90, dur: 0.18, vol: 0.12, type: 'sine', vib: 0.2, vibRate: 30 }); },
     click() { if (!throttle('click', 40)) return; synth({ f: 1800, dur: 0.03, vol: 0.06, type: 'triangle' }); hiss({ dur: 0.015, vol: 0.05, f: 5000 }); },
     hover() { if (!throttle('hover', 60)) return; synth({ f: 2400, dur: 0.025, vol: 0.02, type: 'sine' }); },

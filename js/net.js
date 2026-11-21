@@ -31,7 +31,7 @@ PTD.Net = (function () {
   // ---------- serialisation helpers ----------
   function towerRec(t) {
     return [t.id, t.owner, t.x, t.y, t.kind === 'card' ? 0 : 1, t.kind === 'card' ? t.suit : t.type, t.rank,
-      t.inHand ? 1 : 0, t.kills, r(t.dmgDone), t.fresh != null ? +t.fresh.toFixed(2) : -1];
+      t.inHand ? 1 : 0, t.kills, r(t.dmgDone), t.fresh != null ? +t.fresh.toFixed(2) : -1, t.stunT > 0 ? +t.stunT.toFixed(1) : 0];
   }
   function creepRec(c) {
     const flags = (c.slowF < 1 ? 1 : 0) | (c.stunT > 0 ? 2 : 0) | (c.bleed ? 4 : 0) | (c.wait > 0 ? 8 : 0);
@@ -57,6 +57,7 @@ PTD.Net = (function () {
       case 'towerDestroyed': return { o: d.tower.owner };
       case 'gameOver': return { w: d.winners.map(pid), reason: d.reason };
       case 'shot': return { tw: d.tower.id, c: d.target ? d.target.id : -1, fx: d.fx };
+      case 'towersStunned': return { b: d.creep.bossIdx, tw: d.towers.map(t => t.id) };
       case 'allFolded': case 'waveCleared': return {};
     }
     return null;
@@ -321,7 +322,7 @@ PTD.Net = (function () {
       const g = this.game;
       const next = new Map();
       for (const rec of list) {
-        const [id, owner, x, y, isCombo, sv, rank, inHand, kills, dmg, fresh] = rec;
+        const [id, owner, x, y, isCombo, sv, rank, inHand, kills, dmg, fresh, stun] = rec;
         let t = g.towerById.get(id);
         if (!t) {
           t = { id, owner, x, y, alive: true, kind: isCombo ? 'combo' : 'card', rank };
@@ -330,7 +331,7 @@ PTD.Net = (function () {
           t.title = t.kind === 'card' ? PTD.cardTitle(t.suit, t.rank) : PTD.comboTitle(t.type, t.rank);
           t.scale = t.kind === 'card' ? 1 : 0.8 + (t.rank / 14) * 0.35;
         }
-        t.inHand = !!inHand; t.kills = kills; t.dmgDone = dmg; t.fresh = fresh >= 0 ? fresh : null;
+        t.inHand = !!inHand; t.kills = kills; t.dmgDone = dmg; t.fresh = fresh >= 0 ? fresh : null; t.stunT = stun || 0;
         t.selected = this.sel.has(id) && t.inHand && owner === this.seat;
         t.selOrder = t.selected ? (t.selOrder || this.selOrderOf.get(id) || 0) : 0;
         next.set(id, t);
@@ -361,6 +362,7 @@ PTD.Net = (function () {
           break;
         }
         case 'towerDestroyed': d.tower = { owner: e.o }; break;
+        case 'towersStunned': d.creep = { bossIdx: e.b }; d.towers = (e.tw || []).map(id => g.towerById.get(id)).filter(Boolean); break;
         case 'gameOver': d.winners = e.w.map(P); d.reason = e.reason; g.phase = 'over'; g.result = { winners: d.winners, reason: e.reason }; break;
         case 'shot': {
           const t = g.towerById.get(e.tw), c = g.creepById.get(e.c);
