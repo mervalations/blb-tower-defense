@@ -49,6 +49,8 @@ The original was built for 8 humans covering each other's lanes, so solo it's br
 | `js/game.js` | Simulation and AI rivals (no DOM; runs headless) |
 | `js/art.js`, `js/render.js` | Procedural art and the 2D renderer |
 | `js/render3d.js` | 3D renderer (Three.js, hand-rolled bloom, raised felt terrain) |
+| `tools/blender/looters.py` | Builds looter models in Blender (`blender -b -P tools/blender/looters.py -- assets/models`), then `python tools/embed-models.py` |
+| `js/models.js` | Blender models embedded for the 3D view (generated) |
 | `js/looters3d.js` | Detailed 3D looter characters, one design per looter type |
 | `js/scenery3d.js` | Marquee lights, lane chevrons, wall clutter, spawn arches, jackpot plaza, the casino room |
 | `js/towers3d.js` | Tower models: one per suit for single cards, one per hand type for combos (bigger hand, bigger tower) |

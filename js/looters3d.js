@@ -47,6 +47,42 @@ window.PTD = window.PTD || {};
     return dollarTex;
   }
 
+  // ------------------------------------------------------------------ Blender models
+  // Hand-built looters made in Blender (tools/blender/looters.py) and embedded by
+  // tools/embed-models.py. Parts are named after the joints the animation drives.
+  const MODELS = {};
+  const modelKey = (name) => name.toLowerCase().replace(/[^a-z0-9]+/g, '_');
+  function loadModels(done) {
+    const data = PTD.MODEL_DATA || {};
+    const keys = Object.keys(data);
+    if (!keys.length || !T.GLTFLoader) { if (done) done(); return; }
+    const loader = new T.GLTFLoader();
+    let left = keys.length;
+    keys.forEach(k => {
+      const bin = atob(data[k]), buf = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+      loader.parse(buf.buffer, '', (gltf) => { MODELS[k] = gltf.scene; if (--left === 0 && done) done(); },
+        (e) => { console.warn('[BLB] model failed', k, e); if (--left === 0 && done) done(); });
+    });
+  }
+  function fromModel(ctx, src) {
+    const m = src.clone(true);
+    // each looter gets its own material copies so hit flashes stay individual
+    m.traverse(o => { if (o.isMesh) { o.material = o.material.clone(); if (o.geometry.attributes.color) o.material.vertexColors = true; } });
+    ctx.rig.add(m);
+    const get = (n) => m.getObjectByName(n);
+    const legs = [get('LegL'), get('LegR')], arms = [get('ArmL'), get('ArmR')];
+    ctx.head = get('Head');
+    ctx.sackG = get('Sack');
+    ctx.tail = get('Tail');
+    ctx.eyes = [get('EyeL'), get('EyeR')].filter(Boolean);
+    ctx.ears = [get('EarL'), get('EarR')].filter(Boolean);
+    const body = get('Body');
+    ['Body', 'Head', 'Sack', 'LegL', 'LegR', 'ArmL', 'ArmR'].forEach(n => { const o = get(n); if (o) o.traverse(x => { if (x.isMesh) x.castShadow = true; }); });
+    if (body) body.traverse(x => { if (x.isMesh) ctx.flash.push(x.material); });
+    return { legs, arms };
+  }
+
   // Outfit patterns: a canvas texture tinted with the outfit colour.
   const patterns = {};
   function patterned(base, kind, accent) {
@@ -423,7 +459,9 @@ window.PTD = window.PTD || {};
     ctx.furM = mat(spec.fur || base, { roughness: 0.95 }).clone(); ctx.flash.push(ctx.furM);
     if (spec.fur) ctx.skinM = ctx.furM;
     let parts = {};
-    if (spec.body === 'crab') parts = crab(ctx, spec.shell);
+    const model = MODELS[modelKey(def.name)];
+    if (model) parts = fromModel(ctx, model);
+    else if (spec.body === 'crab') parts = crab(ctx, spec.shell);
     else if (spec.body === 'moth') parts = moth(ctx);
     else if (spec.body === 'snake') parts = snake(ctx);
     else {
@@ -746,5 +784,5 @@ window.PTD = window.PTD || {};
     return { rig, anim, flash: flash.slice(0, 6), head, faceMat, face };
   }
 
-  PTD.Looters3D = { build, buildBoss, SPECS };
+  PTD.Looters3D = { build, buildBoss, SPECS, loadModels, MODELS };
 })();

@@ -56,14 +56,14 @@ window.PTD = window.PTD || {};
   function toon(m, style) {
     if (!m || !m.isMeshStandardMaterial || m.transparent) return m;
     style = style || {};
-    const key = m.uuid + '|' + (style.bright || '') + '|' + (style.rim || '');
+    const key = m.uuid + '|' + (style.bright || '') + '|' + (style.rim || '') + '|' + !!m.vertexColors;
     if (toonCache.has(key)) return toonCache.get(key);
     const own = !m.userData.shared;   // a per-object clone stays per-object
     // toon materials skip PBR energy loss, so scale down to stay under the bloom threshold
     const c = m.color.clone().multiplyScalar(style.bright || (m.metalness > 0.5 ? 0.62 : 0.5));
     if (style.bright) { const mx = Math.max(c.r, c.g, c.b); if (mx > 0.62) c.multiplyScalar(0.62 / mx); }   // whites stay white, not glowing
     if (style.bright) { const hsl = {}; c.getHSL(hsl); c.setHSL(hsl.h, Math.min(1, hsl.s * 1.25), hsl.l); }
-    const t = new T.MeshToonMaterial({ color: c, map: m.map || null, gradientMap: ramp(), emissive: m.emissive ? m.emissive.clone() : new T.Color(0), emissiveMap: m.emissiveMap || null });
+    const t = new T.MeshToonMaterial({ color: c, map: m.map || null, gradientMap: ramp(), emissive: m.emissive ? m.emissive.clone() : new T.Color(0), emissiveMap: m.emissiveMap || null, vertexColors: !!m.vertexColors });
     if (style.rim) {
       // a coloured fresnel rim so characters pop against the dark table
       const rim = new T.Color(style.rim);

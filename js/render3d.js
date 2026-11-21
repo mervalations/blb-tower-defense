@@ -330,6 +330,7 @@ window.PTD = window.PTD || {};
       this.buildRoom();
       this.buildDust();
       this.scenery = PTD.Scenery3D ? PTD.Scenery3D.build(this) : null;
+      if (PTD.Looters3D && !PTD.Looters3D.loading) { PTD.Looters3D.loading = true; PTD.Looters3D.loadModels(); }
 
       // hover / placement helpers
       this.ghost = new T.Mesh(new T.BoxGeometry(124, 8, 124), new T.MeshBasicMaterial({ color: 0x66ff99, transparent: true, opacity: 0.35, depthWrite: false }));
