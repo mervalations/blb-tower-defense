@@ -619,7 +619,7 @@ window.PTD = window.PTD || {};
       const aura = new T.Mesh(geo('aura', () => new T.RingGeometry(1.2, 1.6, 48)), new T.MeshBasicMaterial({ color: new T.Color('#ffcf40').multiplyScalar(0.8), transparent: true, opacity: 0.35, depthWrite: false, blending: T.AdditiveBlending, side: T.DoubleSide }));
       aura.rotation.x = -Math.PI / 2; aura.position.y = 0.03; holder.add(aura);
       this.addHealthBar(root, R * 8.4, 340);
-      root.userData = { rig: holder, flash: m.flash, headG: m.head, face: m.face, faceMat: m.faceMat, boss: b, aura, lastHp: c.hp, hitT: 0, faceReady: false, anim: m.anim };
+      root.userData = { rig: holder, flash: m.flash, headG: m.head, face: m.face, faceMat: m.faceMat, boss: b, aura, lastHp: c.hp, hitT: 0, faceReady: false, anim: m.anim, palms: m.palms };
       this.scene.add(root);
       return root;
     }
@@ -679,7 +679,7 @@ window.PTD = window.PTD || {};
         const want = Math.atan2(Math.cos(c.dir), -Math.sin(c.dir));   // face the walking direction
         let d = (want - ud.rig.rotation.y + Math.PI * 3) % TAU - Math.PI;
         ud.rig.rotation.y += d * Math.min(1, dt * 10);
-        const moving = !(c.wait > 0) && !(c.stunT > 0);
+        const moving = !(c.wait > 0) && !(c.stunT > 0) && !(c.fallT > 0);
         if (c.hp < ud.lastHp - 0.5) ud.hitT = 0.12;
         ud.lastHp = c.hp;
         ud.hitT = Math.max(0, ud.hitT - dt);
@@ -693,7 +693,24 @@ window.PTD = window.PTD || {};
           }
           if (!ud.flexed && intro >= 2.4) { ud.flexed = true; this.burst(o.position.clone().setY(c.radius * 5), '#ffe066', 22, 300, 0.9); }
         }
-        ud.anim(t + c.phaseOff, moving, dt, { speed: c.slowF || 1, hit: ud.hitT / 0.12, stun: c.stunT > 0, slow: c.slowF < 1, intro });
+        let fall = null;
+        if (c.fallT > 0) {
+          fall = 1 - c.fallT / PTD.RULES.fallTime;
+          if (!ud.thudded && fall >= 0.22) {   // face-plant: screen shake and a puff of dust
+            ud.thudded = true; this.shake = Math.max(this.shake, 90);
+            this.burst(W2T(c.x, c.y, 30), '#d9c3a0', 18, 300, 0.7);
+          }
+        } else ud.thudded = false;
+        let slime = null;
+        if (ud.boss && ud.boss.slime && !(c.wait > 0)) {   // cosmetic: every 8 s he blasts white slime from both palms
+          ud.slimeT = (ud.slimeT == null ? 8 : ud.slimeT) - dt;
+          if (ud.slimeT <= 0) { ud.slimeT += 8; ud.slimeFor = 1.3; }
+          if (ud.slimeFor > 0) {
+            ud.slimeFor -= dt; slime = 1 - ud.slimeFor / 1.3;
+            if (slime > 0.12) this.slimeSpray(ud, ud.rig.rotation.y);
+          }
+        }
+        ud.anim(t + c.phaseOff, moving, dt, { speed: c.slowF || 1, hit: ud.hitT / 0.12, stun: c.stunT > 0, slow: c.slowF < 1, intro, fall, slime });
         // little dust puffs at their feet, and the odd gold glint from the loot
         ud.fxT = (ud.fxT || Math.random() * 0.4) - dt;
         if (moving && ud.fxT <= 0 && this.particles.length < 700 && this.view.zoom > 0.08) {
@@ -802,6 +819,24 @@ window.PTD = window.PTD || {};
       }
     }
 
+    // gooey white blobs shot forward from each palm; they splat flat into puddles where they land
+    slimeSpray(ud, yaw) {
+      if (this.particles.length > 850 || !ud.palms) return;
+      const g = geo('slimeBlob', () => new T.SphereGeometry(1, 10, 8));
+      const m = mat('slimeMat', () => new T.MeshStandardMaterial({ color: '#f4f6f2', roughness: 0.12, metalness: 0, emissive: new T.Color('#30302c') }));
+      const fx = Math.sin(yaw), fz = Math.cos(yaw), v = new T.Vector3();
+      for (const palm of ud.palms) {
+        palm.getWorldPosition(v);
+        for (let i = 0; i < 2; i++) {
+          const b = new T.Mesh(g, m), base = 9 + Math.random() * 10, sp = 650 + Math.random() * 350;
+          b.position.copy(v); b.scale.setScalar(base);
+          this.particles.push({ obj: b, t: 0, life: 1.6 + Math.random() * 0.6, base, shrink: true, splat: true, grav: 1500,
+            v: new T.Vector3(fx * sp + (Math.random() - 0.5) * 140, 220 + Math.random() * 200, fz * sp + (Math.random() - 0.5) * 140) });
+          this.scene.add(b);
+        }
+      }
+    }
+
     coinShower(pos, n) {
       const coinGeo = geo('coin', () => new T.CylinderGeometry(26, 26, 7, 20));
       const gold = mat('coinMat', () => new T.MeshStandardMaterial({ color: '#ffcf40', metalness: 0.9, roughness: 0.25, emissive: new T.Color('#2a1a00') }));
@@ -893,11 +928,13 @@ window.PTD = window.PTD || {};
         if (p.v) {
           p.v.y -= (p.grav || 0) * dt;
           p.obj.position.addScaledVector(p.v, dt);
+          if (p.splat && p.obj.position.y < 4) { p.obj.position.y = 4; p.v.set(0, 0, 0); p.grav = 0; p.flat = true; }
           if (p.bounce && p.obj.position.y < 4) { p.obj.position.y = 4; p.v.y *= -0.35; p.v.x *= 0.6; p.v.z *= 0.6; }
         }
         if (p.spin) { p.obj.rotation.x += p.spin.x * dt; p.obj.rotation.z += p.spin.y * dt; }
         if (p.fade && p.obj.material) p.obj.material.opacity = 1 - k;
         if (p.shrink) p.obj.scale.setScalar(p.base * (1 - k * 0.7));
+        if (p.flat) p.obj.scale.set(p.base * 2.2 * (1 - k * 0.5), p.base * 0.25, p.base * 2.2 * (1 - k * 0.5));   // splatted puddle
         keep.push(p);
       }
       this.particles = keep;

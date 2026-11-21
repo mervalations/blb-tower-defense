@@ -15,6 +15,7 @@ PTD.RULES = {
   anteBase: 5,
   bossHpMult: 1.8,         // solo modes: bosses keep their punch after the HP curve flattens them
   bossSpeed: 0.85,         // bosses lumber a little slower so you can see them             // solo modes: every hand pays each player anteBase + levels reached        // winner gets base + base * floor((round+1)/6) * modeMult
+  fallTime: 2.4,           // seconds a club-footed boss lies face-down after tripping (falls every 8 s)
   intermission: 2,
   towerFootprint: 128,
   snap: 64,

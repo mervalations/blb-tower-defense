@@ -248,6 +248,8 @@ PTD.Game = class {
         poisonT: 0, poisonDps: 0, bleed: false, alive: true,
         boss: isBoss, bossIdx, wait: isBoss ? 4.5 : 0, atkT: 3, phaseOff: this.rng() * 6.28,
         radius: isBoss ? 85 : 42,
+        // club-footed bosses (Smooth) trip and fall flat every 8 seconds, lying there for RULES.fallTime
+        trips: isBoss && !!(PTD.BOSSES && PTD.BOSSES[bossIdx] && PTD.BOSSES[bossIdx].feet === 'club'), tripT: 8, fallT: 0,
       });
     }
   }
@@ -671,6 +673,11 @@ PTD.Game = class {
       if (c.bleed) { c.hp = Math.max(1, c.hp - 20 * dt); }
       if (c.poisonT > 0) { c.poisonT -= dt; c.hp -= c.poisonDps * dt; if (c.hp <= 0) { this.kill(c, null); continue; } }
       if (c.wait > 0) { c.wait -= dt; continue; }
+      if (c.trips) {
+        c.tripT -= dt;
+        if (c.tripT <= 0) { c.tripT += 8; c.fallT = PTD.RULES.fallTime; this.floatText(c.x, c.y + 120, 'TRIPPED!', '#ffffff'); }
+        if (c.fallT > 0) { c.fallT -= dt; continue; }
+      }
       if (c.stunT > 0) { c.stunT -= dt; continue; }
       if (c.slowT > 0) { c.slowT -= dt; if (c.slowT <= 0) c.slowF = 1; }
       const L = this.players[c.owner].lane;
