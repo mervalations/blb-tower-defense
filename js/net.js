@@ -46,7 +46,7 @@ PTD.Net = (function () {
   function serEvent(type, d) {
     const pid = (p) => (p ? p.id : -1);
     switch (type) {
-      case 'handStart': return { round: d.round };
+      case 'handStart': return { round: d.round, ante: d.ante };
       case 'deal': case 'swap': case 'tip': case 'tipWorked': case 'tipFailed': case 'fold': case 'defeat': return { p: pid(d.player) };
       case 'combine': return { p: pid(d.player), type: d.combo.type, title: d.combo.title };
       case 'handResult': return { w: d.winners.map(pid), bonus: d.bonus, title: d.title };
@@ -346,7 +346,7 @@ PTD.Net = (function () {
       const g = this.game, P = (i) => g.players[i];
       const d = {};
       switch (e.k) {
-        case 'handStart': d.round = e.round; d.def = g.nextLevelDef(); break;
+        case 'handStart': d.round = e.round; d.ante = e.ante; d.def = g.nextLevelDef(); break;
         case 'deal': case 'swap': case 'tip': case 'tipWorked': case 'tipFailed': case 'fold': case 'defeat': d.player = P(e.p); break;
         case 'combine': d.player = P(e.p); d.combo = { type: e.type, title: e.title }; break;
         case 'handResult': d.winners = e.w.map(P); d.bonus = e.bonus; d.title = e.title; break;

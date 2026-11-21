@@ -152,7 +152,10 @@ PTD.Game = class {
       p.deck = PTD.Poker.newDeck(this.rng);
       p.ai = { step: 0, t: 0.6 + this.rng() * 0.8 };
     }
-    this.emit('handStart', { round: this.level + 1, def: this.nextLevelDef() });
+    // The table pays an ante each hand so there's gold to tip the dealer with.
+    const ante = this.mode.ante ? PTD.RULES.anteBase + this.level : 0;
+    if (ante) for (const p of this.alivePlayers()) { p.gold += ante; p.earned += ante; }
+    this.emit('handStart', { round: this.level + 1, def: this.nextLevelDef(), ante });
   }
 
   ready(p) {
@@ -467,7 +470,7 @@ PTD.Game = class {
     if (!c.alive) return;
     c.alive = false;
     const owner = this.players[c.owner];
-    const b = c.def.bounty;
+    const b = c.def.bounty * (this.mode.bountyMult || 1);
     owner.gold += b; owner.earned += b; owner.kills++;
     if (tower) tower.kills++;
     this.fx.push({ kind: 'coins', x: c.x, y: c.y, t: 0, life: 0.8, n: c.boss ? 18 : 6, color: owner.color });

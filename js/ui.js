@@ -90,6 +90,7 @@
       case 'handStart':
         A.music.setMood('lounge');
         ui.winners = new Set();
+        if (d.ante && me && me.alive) { toast('The table pays an ante: +' + d.ante + ' gold'); A.play('coin'); }
         A.play('hand');
         break;
       case 'deal': if (d.player === me) A.play('deal'); break;
@@ -209,7 +210,7 @@
   function hintText() {
     const g = game, p = g.human;
     if (!p.alive) return 'You went broke. Watching the rest of the game...';
-    if (g.phase === 'spawn') return 'Defend your stash! Kills pay <b>+' + g.levelDef().bounty + '</b>, each leak costs <b>-' + g.levelDef().leak + '</b> gold.';
+    if (g.phase === 'spawn') return 'Defend your stash! Kills pay <b>+' + g.levelDef().bounty * (g.mode.bountyMult || 1) + '</b>, each leak costs <b>-' + g.levelDef().leak + '</b> gold.';
     if (g.phase === 'intermission') return 'Wave cleared. Next hand coming up...';
     if (g.phase !== 'hand') return '';
     if (p.ready) return 'Ready! Waiting for the other gamblers...';

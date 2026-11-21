@@ -11,22 +11,23 @@ PTD.RULES = {
   creepSpeed: 270,         // world units / second
   tipCost: 10,
   tipMax: 9,
-  handBonusBase: 5,        // winner gets base + base * floor((round+1)/6) * modeMult
+  handBonusBase: 5,
+  anteBase: 5,             // solo modes: every hand pays each player anteBase + levels reached        // winner gets base + base * floor((round+1)/6) * modeMult
   intermission: 2,
   towerFootprint: 128,
   snap: 64,
 };
 
 // HP curve for the solo modes (see Game.creepHp). Tuned with tools/sim.js; PTD_CURVE overrides it there.
-const CURVE = +(typeof process !== 'undefined' && process.env && process.env.PTD_CURVE) || 0.6;
+const CURVE = +(typeof process !== 'undefined' && process.env && process.env.PTD_CURVE) || 0.69;
 // Looter health multiplier for levels 1-5 in the solo modes (Classic keeps the original).
 PTD.EARLY_EASE = [0.3, 0.45, 0.6, 0.75, 0.9];
 
 PTD.MODES = [
-  { key: 'amateur', name: 'Amateur', hpMult: 0.75, curve: CURVE, bonusMult: 1, desc: 'Weaker looters. Learn the ropes.' },
-  { key: 'pro', name: 'Professional', hpMult: 1.0, curve: CURVE, bonusMult: 1, desc: 'The intended solo challenge.' },
-  { key: 'tourney', name: 'Tournament', hpMult: 1.0, curve: CURVE, bonusMult: 2, desc: 'Professional, but winning a hand pays double.' },
-  { key: 'classic', name: 'Classic 2.2', hpMult: 1.0, curve: 0, bonusMult: 1, desc: 'Exact looter health from the original map. Brutal solo.' },
+  { key: 'amateur', name: 'Amateur', hpMult: 0.75, curve: CURVE, bonusMult: 1, bountyMult: 2, ante: true, desc: 'Weaker looters. Learn the ropes.' },
+  { key: 'pro', name: 'Professional', hpMult: 1.0, curve: CURVE, bonusMult: 1, bountyMult: 2, ante: true, desc: 'The intended solo challenge.' },
+  { key: 'tourney', name: 'Tournament', hpMult: 1.0, curve: CURVE, bonusMult: 2, bountyMult: 2, ante: true, desc: 'Professional, but winning a hand pays double.' },
+  { key: 'classic', name: 'Classic 2.2', hpMult: 1.0, curve: 0, bonusMult: 1, bountyMult: 1, ante: false, desc: 'Exact looter health from the original map. Brutal solo.' },
 ];
 
 PTD.PLAYERS = [
