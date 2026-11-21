@@ -8,7 +8,7 @@ window.PTD = window.PTD || {};
   const T = window.THREE;
   const TAU = Math.PI * 2;
   const W2T = (x, y, h) => new T.Vector3(x, h || 0, -y);
-  const FELT_H = 44, WALL_H = 150, RIM_TOP = 160, FLOOR = -900;
+  const FELT_H = 44, WALL_H = 150, RIM_TOP = 160;
 
   // deterministic random so the scene is the same every game
   let seed = 1234567;
@@ -432,72 +432,76 @@ window.PTD = window.PTD || {};
       updaters.push((t) => { sign.rotation.y = t * 0.3; sign.position.y = 760 + Math.sin(t * 1.3) * 20; });
     }
 
-    // ------------------------------------------------------------ the rest of the casino
+    // ------------------------------------------------------------ sky, clouds and the floating table
     {
-      // roulette tables with spinning wheels
-      for (let k = 0; k < 6; k++) {
-        const a = k / 6 * TAU + 0.3, R = 10200;
-        const tb = new T.Group(); tb.position.set(Math.cos(a) * R, FLOOR, Math.sin(a) * R); tb.rotation.y = -a;
-        const base = new T.Mesh(new T.BoxGeometry(2600, 700, 1300), std('#3a1c12', { roughness: 0.4 })); base.position.y = 350; tb.add(base);
-        const felt = new T.Mesh(new T.BoxGeometry(2500, 20, 1200), std('#1e6b43', { roughness: 0.95 })); felt.position.y = 710; tb.add(felt);
-        const wheel = new T.Group(); wheel.position.set(-800, 730, 0); tb.add(wheel);
-        const bowl = new T.Mesh(new T.CylinderGeometry(420, 460, 60, 37), std('#4a2414', { roughness: 0.3 })); wheel.add(bowl);
-        const disk = new T.Mesh(new T.CylinderGeometry(360, 360, 64, 37), M('roulette', () => new T.MeshStandardMaterial({
-          map: canvasTex(256, 256, (x) => { for (let i = 0; i < 37; i++) { x.fillStyle = i === 0 ? '#1e8449' : i % 2 ? '#c0392b' : '#111111'; x.beginPath(); x.moveTo(128, 128); x.arc(128, 128, 128, i / 37 * TAU, (i + 1) / 37 * TAU); x.fill(); } x.fillStyle = '#d4a62a'; x.beginPath(); x.arc(128, 128, 40, 0, TAU); x.fill(); }),
-          roughness: 0.3 })));
-        disk.position.y = 4; wheel.add(disk);
-        const spindle = new T.Mesh(new T.ConeGeometry(40, 90, 12), std('#d4a62a', { metalness: 0.95, roughness: 0.2 })); spindle.position.y = 70; wheel.add(spindle);
-        S.add(tb);
-        updaters.push((t, dt) => { wheel.rotation.y += dt * 0.9; });
-      }
-      // marble pillars
-      for (let k = 0; k < 16; k++) {
-        const a = k / 16 * TAU, R = 15500;
-        const p = new T.Mesh(new T.CylinderGeometry(380, 420, 9000, 20), std('#5a5249', { roughness: 0.5, envMapIntensity: 0.4 }));
-        p.position.set(Math.cos(a) * R, FLOOR + 4500, Math.sin(a) * R); S.add(p);
-        const cap = new T.Mesh(new T.CylinderGeometry(620, 420, 400, 20), std('#c9a043', { metalness: 0.9, roughness: 0.25 }));
-        cap.position.set(Math.cos(a) * R, FLOOR + 8800, Math.sin(a) * R); S.add(cap);
-      }
-      // crystal chandeliers glowing above the room
-      for (let k = 0; k < 6; k++) {
-        const pos = [Math.cos(k / 6 * TAU + 0.5) * 11000, Math.sin(k / 6 * TAU + 0.5) * 11000];   // ring the room; never over the table
-        const ch = new T.Group(); ch.position.set(pos[0], 7200, pos[1]);
-        const crystal = glow('#fff4dd', 2.2);
-        for (let ringI = 0; ringI < 3; ringI++) {
-          const rad = 700 - ringI * 200, n = 18 - ringI * 4;
-          for (let q = 0; q < n; q++) {
-            const c = new T.Mesh(new T.OctahedronGeometry(40, 0), crystal);
-            c.position.set(Math.cos(q / n * TAU) * rad, -ringI * 260, Math.sin(q / n * TAU) * rad); c.scale.y = 2.2; ch.add(c);
-          }
-          const hoop = new T.Mesh(new T.TorusGeometry(rad, 16, 6, 40), std('#d4a62a', { metalness: 0.95, roughness: 0.2 }));
-          hoop.rotation.x = Math.PI / 2; hoop.position.y = -ringI * 260 + 60; ch.add(hoop);
+      // gradient sky dome with a soft sun glow
+      const sky = new T.Mesh(new T.SphereGeometry(60000, 48, 24), new T.ShaderMaterial({
+        side: T.BackSide, depthWrite: false, fog: false,
+        uniforms: { top: { value: new T.Color('#2f7fe0') }, mid: { value: new T.Color('#8cc9ff') }, horizon: { value: new T.Color('#e4f4ff') }, sun: { value: new T.Vector3(-0.45, 0.55, 0.7).normalize() } },
+        vertexShader: 'varying vec3 vDir; void main(){ vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+        fragmentShader: `uniform vec3 top; uniform vec3 mid; uniform vec3 horizon; uniform vec3 sun; varying vec3 vDir;
+          void main(){
+            float h = vDir.y;
+            vec3 c = h > 0.0 ? mix(mix(horizon, mid, smoothstep(0.0, 0.25, h)), top, smoothstep(0.25, 0.9, h)) : mix(horizon, vec3(0.42, 0.7, 1.0), smoothstep(0.0, -0.35, h));   // open sky below the table too
+            float s = max(0.0, dot(vDir, sun));
+            c += vec3(1.0, 0.93, 0.75) * (pow(s, 400.0) * 1.2 + pow(s, 12.0) * 0.18);
+            gl_FragColor = vec4(c, 1.0);
+          }`,
+      }));
+      sky.renderOrder = -10; sky.frustumCulled = false;
+      S.add(sky);
+      updaters.push(() => { sky.position.copy(r.camera.position); });
+
+      // puffy cartoon clouds: clusters of spheres, all in one instanced draw
+      const puffs = [];
+      const cloud = (cx, cy, cz, size, n) => {
+        for (let i = 0; i < n; i++) {
+          const a = (i / n) * Math.PI * 2 + rnd() * 0.6, d = size * (0.35 + rnd() * 0.75);
+          const s = size * (0.45 + rnd() * 0.45) * (i === 0 ? 1.3 : 1);
+          puffs.push([cx + Math.cos(a) * d, cy + rnd() * size * 0.35 - (i % 3 === 0 ? size * 0.12 : 0), cz + Math.sin(a) * d * 0.6, s, s * 0.72, s]);
         }
-        S.add(ch);
-        updaters.push((t) => { ch.rotation.y = t * 0.05 + k; });
+      };
+      const edge = half + 700;
+      for (let i = 0; i < 30; i++) {               // scattered clouds drifting below the table
+        const a = (i / 30) * Math.PI * 2 + rnd() * 0.2, R = edge + 2500 + rnd() * 18000;
+        cloud(Math.cos(a) * R, -3800 - rnd() * 4000, Math.sin(a) * R, 1100 + rnd() * 1300, 6 + Math.floor(rnd() * 4));
       }
-      // back bar with lit bottles
-      {
-        const bar = new T.Group(); bar.position.set(0, FLOOR, -17500);
-        const counter = new T.Mesh(new T.BoxGeometry(9000, 1100, 900), std('#2a130c', { roughness: 0.3 })); counter.position.y = 550; bar.add(counter);
-        const shelf = new T.Mesh(new T.BoxGeometry(9000, 3400, 300), std('#1a0c08', { roughness: 0.5 })); shelf.position.set(0, 2000, -900); bar.add(shelf);
-        const hues = ['#ffb347', '#9be15d', '#6fd6ff', '#ff6f91', '#e2c275'];
-        for (let row = 0; row < 3; row++) for (let i = 0; i < 40; i++) {
-          const b = new T.Mesh(new T.CylinderGeometry(60, 70, 380, 10), glow(hues[(i + row) % 5], 0.9));
-          b.position.set(-4300 + i * 220, 1300 + row * 900, -700); bar.add(b);
-        }
-        const sign = new T.Mesh(new T.PlaneGeometry(3600, 900), new T.MeshBasicMaterial({ map: neonText('BLB LOUNGE', '#ff3d6e', 1024, 256), transparent: true, depthWrite: false }));
-        sign.position.set(0, 4300, -700); bar.add(sign);
-        S.add(bar);
+      for (let i = 0; i < 10; i++) {               // tucked right under the table so it sits on a bed of cloud
+        const a = (i / 10) * Math.PI * 2, R = edge * (0.55 + rnd() * 0.35);
+        cloud(Math.cos(a) * R, -3700 - rnd() * 400, Math.sin(a) * R, 1300 + rnd() * 500, 9);   // small enough to stay under the board
       }
-      // neon signs high on the walls
-      const words = [['BLACKJACK', '#3dd6ff'], ['ROYAL FLUSH', '#ffd23d'], ['ALL IN', '#ff3d6e'], ['HIGH ROLLERS', '#8b5cff'], ['LUCKY 7', '#3dff8b']];
-      words.forEach(([w, c], k) => {
-        const a = k / words.length * TAU + 1.0, R = 16800;
-        const sign = new T.Mesh(new T.PlaneGeometry(4200, 1050), new T.MeshBasicMaterial({ map: neonText(w, c, 1024, 256), transparent: true, depthWrite: false, side: T.DoubleSide }));
-        sign.position.set(Math.cos(a) * R, 5200, Math.sin(a) * R); sign.lookAt(0, 5200, 0);
-        S.add(sign);
-        updaters.push((t) => { sign.material.opacity = Math.sin(t * 3 + k * 7) > -0.95 ? 1 : 0.25; });   // the odd neon flicker
-      });
+      for (let i = 0; i < 26; i++) {               // big clouds out on the horizon
+        const a = rnd() * Math.PI * 2, R = 44000 + rnd() * 10000;
+        cloud(Math.cos(a) * R, -2000 + rnd() * 7000, Math.sin(a) * R, 3500 + rnd() * 3000, 8 + Math.floor(rnd() * 5));
+      }
+      // kept below the bloom threshold so sunlit clouds read white without glowing over the board
+      const cloudMat = new T.MeshToonMaterial({ color: new T.Color('#ffffff').multiplyScalar(0.48), emissive: new T.Color('#9cc2e8').multiplyScalar(0.12), fog: false });
+      const clouds = new T.InstancedMesh(new T.SphereGeometry(1, 18, 12), cloudMat, puffs.length);
+      const m4 = new T.Matrix4(), q = new T.Quaternion();
+      puffs.forEach((p, i) => clouds.setMatrixAt(i, m4.compose(new T.Vector3(p[0], p[1], p[2]), q, new T.Vector3(p[3], p[4], p[5]))));
+      clouds.instanceMatrix.needsUpdate = true;
+      const cloudG = new T.Group(); cloudG.add(clouds); S.add(cloudG);
+      updaters.push((t) => { cloudG.rotation.y = t * 0.004; });
+
+      // the table's thick edge: lacquered skirt, gold trim and a tapering base under it all
+      const W = map.size * cell + 840;   // board plus the rim on both sides
+      const lacq = std('#7a3b1c', { roughness: 0.45 });
+      const skirt = new T.Mesh(new T.BoxGeometry(W + 60, 520, W + 60), lacq); skirt.position.y = -1100; S.add(skirt);
+      const trim = new T.Mesh(new T.BoxGeometry(W + 90, 70, W + 90), std('#e1b12c', { metalness: 0.85, roughness: 0.25 })); trim.position.y = -880; S.add(trim);
+      const trim2 = new T.Mesh(new T.BoxGeometry(W + 90, 50, W + 90), std('#e1b12c', { metalness: 0.85, roughness: 0.25 })); trim2.position.y = -1360; S.add(trim2);
+      const base = new T.Mesh(new T.CylinderGeometry(W * 0.71, W * 0.42, 1500, 4, 1), std('#4a2312', { roughness: 0.55 }));
+      base.rotation.y = Math.PI / 4; base.position.y = -2130; S.add(base);
+      const foot = new T.Mesh(new T.CylinderGeometry(W * 0.42, W * 0.3, 300, 4, 1), std('#e1b12c', { metalness: 0.85, roughness: 0.3 }));
+      foot.rotation.y = Math.PI / 4; foot.position.y = -3010; S.add(foot);
+      // gold studs along the skirt
+      const studs = [];
+      for (let k = 0; k < 4; k++) for (let i = 0; i < 28; i++) {
+        const u = (i + 0.5) / 28 * W - W / 2, o = W / 2 + 32;
+        studs.push(k === 0 ? [u, o] : k === 1 ? [u, -o] : k === 2 ? [o, u] : [-o, u]);
+      }
+      const studM = new T.InstancedMesh(new T.SphereGeometry(38, 12, 8), std('#ffd34d', { metalness: 0.9, roughness: 0.2 }), studs.length);
+      studs.forEach(([x, z], i) => studM.setMatrixAt(i, m4.compose(new T.Vector3(x, -1100, z), q, new T.Vector3(1, 1, 1))));
+      studM.instanceMatrix.needsUpdate = true; S.add(studM);
     }
 
     return { update(t, dt) { for (const u of updaters) u(t, dt); } };

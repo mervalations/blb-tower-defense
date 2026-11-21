@@ -93,7 +93,7 @@ window.PTD = window.PTD || {};
     outlineMat.userData.shared = true;
     return outlineMat;
   }
-  // opts: { width, onlyShadowCasters, skip(mesh) }
+  // opts: { width, onlyShadowCasters, outlineIf(mesh), skip(mesh) }
   function cartoonize(root, opts) {
     opts = opts || {};
     const solids = [];
@@ -104,7 +104,7 @@ window.PTD = window.PTD || {};
       const basic = o.material.isMeshBasicMaterial;
       o.material = toon(o.material, opts.style);
       if (basic || o.material.transparent || o.material.blending === T.AdditiveBlending) continue;
-      if (opts.onlyShadowCasters && !o.castShadow) continue;
+      if (opts.outlineIf ? !opts.outlineIf(o) : opts.onlyShadowCasters && !o.castShadow) continue;
       const hull = new T.Mesh(o.geometry, outline(opts.width));
       hull.userData.isOutline = true; hull.userData.towerId = o.userData.towerId;
       hull.castShadow = false; hull.raycast = () => {};

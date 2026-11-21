@@ -120,13 +120,13 @@ window.PTD = window.PTD || {};
 
   // ------------------------------------------------------------------ faces
   function eyes(ctx, head, o) {
-    const y = o.y || 0.05, z = o.z || 0.27, sp = o.sp || 0.12, s = o.size || 0.085;
+    const y = o.y || 0.05, z = o.z || 0.27, sp = o.sp || 0.12, s = (o.size || 0.085) * 1.25;   // big cartoon eyes
     for (const side of [-1, 1]) {
       ctx.eyes.push(part(head, sph(), gloss('#ffffff'), [s, s * (o.tall || 1.1), s * 0.7], [side * sp, y, z]));
-      const iris = part(head, sph(), gloss(o.iris || '#3b2a1a'), [s * 0.62, s * 0.66, s * 0.4], [side * sp, y, z + s * 0.5]);
+      const iris = part(head, sph(), gloss(o.iris || '#3b2a1a'), [s * 0.66, s * 0.72, s * 0.4], [side * sp, y - s * 0.08, z + s * 0.5]);
       ctx.detail.push(iris); ctx.eyes.push(iris);
-      ctx.detail.push(part(head, sph(), gloss('#050505'), [s * 0.32, s * 0.36, s * 0.3], [side * sp, y, z + s * 0.62]));
-      ctx.detail.push(part(head, lowSph(), glow('#ffffff', 1.5), [s * 0.12, s * 0.12, s * 0.1], [side * sp + s * 0.2, y + s * 0.25, z + s * 0.72]));
+      ctx.detail.push(part(head, sph(), gloss('#050505'), [s * 0.4, s * 0.45, s * 0.3], [side * sp, y - s * 0.08, z + s * 0.62]));
+      ctx.detail.push(part(head, lowSph(), glow('#ffffff', 1.5), [s * 0.16, s * 0.16, s * 0.1], [side * sp + s * 0.2, y + s * 0.2, z + s * 0.74]));
       if (o.brow) ctx.detail.push(part(head, box(), mat(o.brow), [s * 1.6, s * 0.28, s * 0.4], [side * sp, y + s * 1.35, z - 0.01], [0, 0, side * (o.angry ? 0.35 : -0.1)]));
     }
   }
@@ -215,36 +215,37 @@ window.PTD = window.PTD || {};
         part(hip, box(), bottom, [0.2, 0.62, 0.2], [0, -0.42, 0]).castShadow = true;
         part(hip, box(), shoes, [0.24, 0.14, 0.32], [0, -0.85, 0.05]);
       } else if (!o.robe) {
-        part(hip, cap(), bottom, [0.105, 0.3, 0.105], [0, -0.4, 0]).castShadow = true;
+        part(hip, cap(), bottom, [0.13, 0.24, 0.13], [0, -0.42, 0]).castShadow = true;
         if (o.flares) part(hip, cone(), bottom, [0.17, 0.32, 0.17], [0, -0.7, 0]);
         if (o.bigShoes) part(hip, sph(), shoes, [0.17, 0.1, 0.36], [0, -0.85, 0.16]).castShadow = true;
         else if (o.flippers) part(hip, sph(), gloss(o.shoes || '#2c3e50'), [0.16, 0.04, 0.4], [0, -0.9, 0.18]);
-        else part(hip, sph(), shoes, [0.13, 0.085, 0.21], [0, -0.85, 0.06]);
-      } else part(hip, sph(), shoes, [0.12, 0.08, 0.19], [0, -0.85, 0.07]);
+        else part(hip, sph(), shoes, [0.17, 0.12, 0.27], [0, -0.83, 0.08]).castShadow = true;
+      } else part(hip, sph(), shoes, [0.15, 0.1, 0.24], [0, -0.84, 0.08]).castShadow = true;
       legs.push(hip);
     }
-    const torso = o.boxy ? part(rig, box(), ctx.topM, [0.64 * (o.wide || 1), 0.7, 0.46], [0, 1.33, 0]) : part(rig, cap(), ctx.topM, [0.3 * (o.wide || 1), 0.24, 0.24], [0, 1.33, 0]);
+    const torso = o.boxy ? part(rig, box(), ctx.topM, [0.64 * (o.wide || 1), 0.7, 0.46], [0, 1.33, 0]) : part(rig, sph(), ctx.topM, [0.37 * (o.wide || 1), 0.46, 0.33], [0, 1.3, 0]);
     torso.castShadow = true;
     if (o.robe) part(rig, cone(), ctx.topM, [0.48, 1.05, 0.42], [0, 0.6, 0]).castShadow = true;
-    if (o.belt) part(rig, cyl(), mat(o.belt, { roughness: 0.4 }), [0.31 * (o.wide || 1), 0.07, 0.25], [0, 1.06, 0]);
-    if (o.vest) part(rig, cap(), fabric(o.vest), [0.305 * (o.wide || 1), 0.2, 0.245], [0, 1.36, -0.012]).scale.z = 0.235;
+    if (o.belt) part(rig, cyl(), mat(o.belt, { roughness: 0.4 }), [0.335 * (o.wide || 1), 0.08, 0.295], [0, 1.06, 0]);
+    if (o.vest) for (const s of [-1, 1]) part(rig, sph(), fabric(o.vest), [0.22 * (o.wide || 1), 0.4, 0.3], [s * 0.15 * (o.wide || 1), 1.33, 0.03]);   // open vest panels
     if (o.coat) { part(rig, cone(), fabric(o.coat), [0.4 * (o.wide || 1), 0.95, 0.33], [0, 1.05, -0.02]).castShadow = true; }
-    if (o.shirtV) part(rig, cone(), fabric(o.shirtV), [0.11, 0.3, 0.02], [0, 1.47, 0.24], [Math.PI, 0, 0]);
-    if (o.tie) part(rig, cone(), gloss(o.tie), [0.04, 0.24, 0.02], [0, 1.38, 0.255], [Math.PI, 0, 0]);
-    if (o.chain) ctx.detail.push(part(rig, tor(), metal('#e1b12c'), [0.17, 0.2, 0.17], [0, 1.5, 0.12], [1.2, 0, 0]));
+    if (o.shirtV) part(rig, cone(), fabric(o.shirtV), [0.11, 0.3, 0.02], [0, 1.5, 0.3], [Math.PI - 0.35, 0, 0]);
+    if (o.tie) part(rig, cone(), gloss(o.tie), [0.05, 0.28, 0.02], [0, 1.42, 0.335], [Math.PI - 0.25, 0, 0]);
+    if (o.chain) ctx.detail.push(part(rig, tor(), metal('#e1b12c'), [0.19, 0.22, 0.19], [0, 1.52, 0.18], [1.2, 0, 0]));
     if (o.poncho) part(rig, cone(), fabric(o.poncho), [0.46, 0.55, 0.4], [0, 1.4, 0]).castShadow = true;
     if (o.cape) part(rig, geo('capeG', () => new T.CylinderGeometry(0.34, 0.6, 1.2, 16, 1, true, Math.PI * 0.55, Math.PI * 0.9)), mat(o.cape, { side: T.DoubleSide, roughness: 0.8 }), [1, 1, 1], [0, 1.05, -0.04]);   // arc covers the back
     for (const s of [-1, 1]) {
       const sh = pivot(rig, [s * 0.36 * (o.wide || 1), 1.55, 0]);
       if (o.boxy) part(sh, box(), ctx.topM, [0.15, 0.44, 0.15], [0, -0.25, 0]);
       else part(sh, cap(), o.robe || o.coat ? fabric(o.coat || o.top) : ctx.topM, [0.075 * (o.armW || 1), 0.2, 0.075 * (o.armW || 1)], [0, -0.24, 0]);
-      const hand = part(sh, sph(), o.glove ? mat(o.glove) : ctx.skinM, [0.085, 0.085, 0.085], [0, -0.52, 0.02]);
+      const hand = part(sh, sph(), o.glove ? mat(o.glove) : ctx.skinM, [0.12, 0.12, 0.12], [0, -0.52, 0.02]);   // big cartoon mitts
+      hand.castShadow = true;
       arms.push(sh);
       if (s === 1) ctx.rightHand = hand;
     }
     if (o.knuckles) ctx.detail.push(part(arms[1], tor(), metal('#b08d57'), [0.07, 0.07, 0.1], [0, -0.52, 0.08], [0, Math.PI / 2, 0]));
-    const head = pivot(rig, [0, 2.02, 0]);
-    head.scale.setScalar(1.32);   // bobble-head proportions, like the bosses
+    const head = pivot(rig, [0, 2.1, 0]);
+    head.scale.setScalar(1.6);    // big bobble head: cartoon proportions
     part(rig, cyl(), ctx.skinM, [0.09, 0.15, 0.09], [0, 1.78, 0]);
     ctx.head = head;
     return { legs, arms, torso };
@@ -646,14 +647,14 @@ window.PTD = window.PTD || {};
     const rig = ctx.rig, h = ctx.head, wide = o.wide || 1;
     if (o.eyepatch) { part(h, disc(), mat('#111'), [0.075, 0.4, 0.075], [0.11, 0.06, 0.3], [Math.PI / 2, 0, 0]); part(h, cyl(), mat('#111'), [0.31, 0.02, 0.31], [0, 0.12, 0], [0.25, 0, 0.1]); }
     if (o.shades) { for (const s of [-1, 1]) part(h, box(), gloss('#111'), [0.13, 0.08, 0.03], [s * 0.11, 0.06, 0.31]); part(h, box(), gloss('#111'), [0.08, 0.02, 0.02], [0, 0.08, 0.31]); }
-    if (o.bowtie) for (const s of [-1, 1]) part(rig, cone(), gloss(o.bowtie), [0.07, 0.09, 0.05], [s * 0.06, 1.68, 0.2], [0, 0, s * Math.PI / 2]);
+    if (o.bowtie) for (const s of [-1, 1]) part(rig, cone(), gloss(o.bowtie), [0.07, 0.09, 0.05], [s * 0.06, 1.66, 0.25], [0, 0, s * Math.PI / 2]);
     if (o.scarf) { part(rig, tor(), fabric(o.scarf), [0.2, 0.2, 0.3], [0, 1.72, 0], [Math.PI / 2, 0, 0]); part(rig, box(), fabric(o.scarf), [0.08, 0.3, 0.03], [0.1, 1.55, 0.22], [0, 0, 0.15]); }
-    if (o.apron) part(rig, box(), fabric(o.apron), [0.4 * wide, 0.6, 0.03], [0, 1.05, 0.25]);
-    if (o.chestplate) part(rig, sph(), metal(o.chestplate), [0.33 * wide, 0.27, 0.27], [0, 1.37, 0.03]).castShadow = true;
-    if (o.bandolier) { part(rig, box(), mat('#5d4037'), [0.07, 0.8, 0.03], [0, 1.35, 0.24], [0, 0, 0.7]); for (let i = 0; i < 4; i++) ctx.detail.push(part(rig, cyl(), metal('#e1b12c'), [0.02, 0.07, 0.02], [-0.18 + i * 0.12, 1.2 + i * 0.1, 0.26], [0, 0, 0.7])); }
-    if (o.badge) part(rig, OCTA(), metal('#e1b12c'), [0.07, 0.07, 0.02], [-0.14, 1.45, 0.25]);
-    if (o.championBelt) { part(rig, cyl(), mat('#1b1b1b'), [0.33 * wide, 0.1, 0.26], [0, 1.06, 0]); part(rig, sph(), metal('#e1b12c'), [0.16, 0.11, 0.05], [0, 1.06, 0.25]); }
-    if (o.tanks) for (const s of [-1, 1]) part(rig, cap(), gloss(o.tanks), [0.11, 0.17, 0.11], [s * 0.12, 1.4, -0.3]).castShadow = true;
+    if (o.apron) part(rig, box(), fabric(o.apron), [0.42 * wide, 0.6, 0.03], [0, 1.1, 0.31], [-0.15, 0, 0]);
+    if (o.chestplate) part(rig, sph(), metal(o.chestplate), [0.39 * wide, 0.36, 0.35], [0, 1.4, 0.02]).castShadow = true;
+    if (o.bandolier) { part(rig, box(), mat('#5d4037'), [0.07, 0.85, 0.03], [0, 1.33, 0.33], [0, 0, 0.7]); for (let i = 0; i < 4; i++) ctx.detail.push(part(rig, cyl(), metal('#e1b12c'), [0.02, 0.07, 0.02], [-0.18 + i * 0.12, 1.2 + i * 0.1, 0.35], [0, 0, 0.7])); }
+    if (o.badge) part(rig, OCTA(), metal('#e1b12c'), [0.08, 0.08, 0.02], [-0.15, 1.45, 0.32]);
+    if (o.championBelt) { part(rig, cyl(), mat('#1b1b1b'), [0.345 * wide, 0.11, 0.3], [0, 1.06, 0]); part(rig, sph(), metal('#e1b12c'), [0.17, 0.12, 0.05], [0, 1.06, 0.3]); }
+    if (o.tanks) for (const s of [-1, 1]) part(rig, cap(), gloss(o.tanks), [0.11, 0.17, 0.11], [s * 0.12, 1.4, -0.38]).castShadow = true;
     if (o.parrot) {
       const b = pivot(rig, [0.38 * wide, 1.75, 0]); ctx.parrot = b;
       part(b, sph(), mat('#2ecc71'), [0.1, 0.14, 0.1], [0, 0.1, 0]).castShadow = true;
@@ -837,7 +838,7 @@ window.PTD = window.PTD || {};
       if (on && !stars) {
         stars = new T.Group();
         for (let k = 0; k < 3; k++) { const st = new T.Mesh(geo('star', () => new T.OctahedronGeometry(0.07, 0)), glow('#ffe066', 2.4)); st.position.set(Math.cos(k / 3 * TAU) * 0.35, 0, Math.sin(k / 3 * TAU) * 0.35); stars.add(st); }
-        stars.position.y = humanoid ? 2.45 : 1.6;
+        stars.position.y = humanoid ? 2.9 : 1.6;
         rig.add(stars);
       }
       if (stars) { stars.visible = on; if (on) stars.rotation.y = t * 6; }
@@ -866,11 +867,12 @@ window.PTD = window.PTD || {};
         parts.arms[0].rotation.x = armHold + sw * 0.1; parts.arms[0].rotation.z = -0.25;
         let rArm = spec.armsFwd ? -1.45 + sw * 0.12 : spec.prop ? -0.6 + sw * 0.15 : -sw * gait.arms;
         let rArmZ = 0;
-        const bob = moving ? Math.abs(Math.sin(ph)) * gait.bob : Math.sin(t * 2) * 0.01;
+        const bob = moving ? Math.abs(Math.sin(ph)) * gait.bob * 1.6 : Math.sin(t * 2) * 0.015;
         rig.position.y = bob - gait.crouch + (gait === GAIT.glide ? 0.06 + Math.sin(t * 2.2) * 0.05 : 0);
         rig.rotation.x = gait.lean - (st.hit || 0) * 0.45;                    // lean, or flinch back when hit
         rig.rotation.z = moving ? Math.sin(ph * 0.5) * gait.sway : 0;
-        const squash = 1 - (st.hit || 0) * 0.12 + (moving ? Math.abs(Math.sin(ph)) * 0.03 : 0);
+        const land = moving ? Math.abs(Math.sin(ph)) : 0;   // stretch on the way up, squash as each foot lands
+        const squash = 1 - (st.hit || 0) * 0.15 + (moving ? (land - 0.5) * 0.14 : 0);
         rig.scale.set(baseScale / Math.sqrt(squash), baseScale * squash, baseScale / Math.sqrt(squash));
         if (ctx.head) { ctx.head.rotation.z = sw * 0.06; ctx.head.rotation.y = 0; ctx.head.rotation.x = 0; }
         switch (active) {
@@ -940,7 +942,9 @@ window.PTD = window.PTD || {};
     if (PTD.Toon) {
       const before = new Map();
       rig.traverse(o => { if (o.isMesh) before.set(o, o.material); });
-      PTD.Toon.cartoonize(rig, { width: 2.6, onlyShadowCasters: true, style: { bright: 0.78, rim: '#ffd9a0' } });
+      rig.updateMatrixWorld(true);
+      const big = (o) => { if (!o.geometry.boundingSphere) o.geometry.computeBoundingSphere(); const sc = new T.Vector3(); o.matrixWorld.decompose(new T.Vector3(), new T.Quaternion(), sc); return o.geometry.boundingSphere.radius * Math.max(sc.x, sc.y, sc.z) > 0.07 && ctx.detail.indexOf(o) < 0; };
+      PTD.Toon.cartoonize(rig, { width: 4.2, outlineIf: big, style: { bright: 0.6, rim: '#bfe4ff' } });
       const swap = new Map();
       for (const [o, m] of before) if (o.material !== m) swap.set(m, o.material);
       ctx.flash = ctx.flash.map(m => swap.get(m) || m).filter(m => m.emissive);

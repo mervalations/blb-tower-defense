@@ -128,34 +128,18 @@ window.PTD = window.PTD || {};
     const t = canvasTex(c); t.wrapS = t.wrapT = T.RepeatWrapping; t.repeat.set(6, 1);
     return (cache.tex.wood = t);
   }
-  function shaftTexture() {
-    if (cache.tex.shaft) return cache.tex.shaft;
-    const c = document.createElement('canvas'); c.width = 4; c.height = 128;
-    const x = c.getContext('2d');
-    const g = x.createLinearGradient(0, 0, 0, 128);
-    g.addColorStop(0, 'rgba(255,255,255,0.9)'); g.addColorStop(0.5, 'rgba(255,255,255,0.25)'); g.addColorStop(1, 'rgba(255,255,255,0)');
-    x.fillStyle = g; x.fillRect(0, 0, 4, 128);
-    return (cache.tex.shaft = canvasTex(c, false));
-  }
-  // A tiny dark casino "room" with warm lamps and neon strips, baked into an environment
-  // map so metal, gold and lacquer reflect something believable.
+
+  // A tiny sunny sky (blue above, bright horizon, green-ish ground, a sun) baked into an
+  // environment map so metal, gold and lacquer reflect the daytime world around the table.
   function buildEnvironment(gl) {
     if (cache.env) return cache.env;
     const env = new T.Scene();
-    const room = new T.Mesh(new T.BoxGeometry(100, 40, 100), new T.MeshBasicMaterial({ color: 0x1a0d10, side: T.BackSide }));
-    room.position.y = 15; env.add(room);
-    const floor = new T.Mesh(new T.PlaneGeometry(100, 100), new T.MeshBasicMaterial({ color: 0x2a0a10 }));
-    floor.rotation.x = -Math.PI / 2; floor.position.y = -4.9; env.add(floor);
-    for (const [x, z] of [[-18, -18], [18, -18], [18, 18], [-18, 18]]) {
-      const lamp = new T.Mesh(new T.CircleGeometry(5, 24), new T.MeshBasicMaterial({ color: new T.Color(0xffe2b0).multiplyScalar(6) }));
-      lamp.rotation.x = Math.PI / 2; lamp.position.set(x, 34, z); env.add(lamp);
-    }
-    const neon = [0xff3d6e, 0x3dd6ff, 0xffd23d, 0x8b5cff, 0x3dff8b];
-    for (let i = 0; i < 20; i++) {
-      const a = i / 20 * TAU;
-      const strip = new T.Mesh(new T.PlaneGeometry(6, 3), new T.MeshBasicMaterial({ color: new T.Color(neon[i % 5]).multiplyScalar(2.5), side: T.DoubleSide }));
-      strip.position.set(Math.cos(a) * 48, 4, Math.sin(a) * 48); strip.lookAt(0, 4, 0); env.add(strip);
-    }
+    const dome = new T.Mesh(new T.SphereGeometry(50, 32, 16), new T.ShaderMaterial({ side: T.BackSide,
+      vertexShader: 'varying vec3 vP; void main(){ vP = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+      fragmentShader: 'varying vec3 vP; void main(){ float h = vP.y; vec3 c = h > 0.0 ? mix(vec3(0.85, 0.93, 1.0), vec3(0.25, 0.5, 0.9), smoothstep(0.0, 0.8, h)) : mix(vec3(0.85, 0.93, 1.0), vec3(0.35, 0.45, 0.3), smoothstep(0.0, -0.3, h)); gl_FragColor = vec4(c * 0.3, 1.0); }' }));   // dim: reflections tint, the sun and sky lights do the lighting
+    env.add(dome);
+    const sun = new T.Mesh(new T.CircleGeometry(6, 24), new T.MeshBasicMaterial({ color: new T.Color(0xfff2d0).multiplyScalar(2.5), side: T.DoubleSide }));
+    sun.position.set(-20, 26, 30); sun.lookAt(0, 0, 0); env.add(sun);
     const pm = new T.PMREMGenerator(gl);
     cache.env = pm.fromScene(env, 0.035).texture;
     pm.dispose();
@@ -169,20 +153,7 @@ window.PTD = window.PTD || {};
     return (cache.tex.ramp = t);
   }
 
-  function carpetTexture() {
-    if (cache.tex.carpet) return cache.tex.carpet;
-    const c = document.createElement('canvas'); c.width = c.height = 256;
-    const x = c.getContext('2d');
-    x.fillStyle = '#c84a5a'; x.fillRect(0, 0, 256, 256);
-    x.strokeStyle = 'rgba(214,170,72,0.35)'; x.lineWidth = 4;
-    for (let i = 0; i < 2; i++) for (let j = 0; j < 2; j++) {
-      const cx = 64 + i * 128, cy = 64 + j * 128;
-      x.beginPath(); x.moveTo(cx, cy - 48); x.lineTo(cx + 48, cy); x.lineTo(cx, cy + 48); x.lineTo(cx - 48, cy); x.closePath(); x.stroke();
-      x.beginPath(); x.arc(cx, cy, 14, 0, TAU); x.stroke();
-    }
-    const t = canvasTex(c); t.wrapS = t.wrapT = T.RepeatWrapping; t.repeat.set(60, 60);
-    return (cache.tex.carpet = t);
-  }
+
 
   // ---------------------------------------------------------------- post-processing
   // Small hand-rolled HDR bloom: bright-pass -> separable blur at 1/2 and 1/4 res ->
@@ -222,7 +193,7 @@ window.PTD = window.PTD || {};
       this.quad = new T.Mesh(new T.PlaneGeometry(2, 2));
       this.scene.add(this.quad);
       const sh = (fs, uniforms) => new T.ShaderMaterial({ vertexShader: VS, fragmentShader: fs, uniforms, depthTest: false, depthWrite: false });
-      this.bright = sh(BRIGHT_FS, { tDiffuse: { value: null }, threshold: { value: 1.25 } });
+      this.bright = sh(BRIGHT_FS, { tDiffuse: { value: null }, threshold: { value: 2.3 } });   // only true glows bloom; sunlit whites stay crisp
       this.blur = sh(BLUR_FS, { tDiffuse: { value: null }, dir: { value: new T.Vector2() } });
       this.comp = sh(COMP_FS, { tScene: { value: null }, tB1: { value: null }, tB2: { value: null }, strength: { value: 1.0 },
         exposure: { value: 0.95 }, flash: { value: 0 }, flashColor: { value: new T.Color(0.9, 0.05, 0.05) } });
@@ -294,20 +265,20 @@ window.PTD = window.PTD || {};
     buildScene() {
       const g = this.game, map = g.map;
       const S = this.scene = new T.Scene();
-      S.background = new T.Color(0xf3c9a8);
-      S.fog = new T.Fog(0xf3c9a8, 9000, 30000);
+      S.background = new T.Color(0xcfe8ff);   // the sky dome (scenery3d) covers this
+      S.fog = new T.Fog(0xa9d4ff, 9000, 30000);
       S.environment = buildEnvironment(this.gl);
 
-      // light: warm key light with shadows + cool fill
-      S.add(new T.HemisphereLight(0xfff4e0, 0x8a6a8a, 0.9));
-      const key = this.key = new T.DirectionalLight(0xfff1d6, 1.25);
+      // light: sunny key light with shadows + sky/ground fill
+      S.add(new T.HemisphereLight(0xdff1ff, 0x9ab88a, 1.0));
+      const key = this.key = new T.DirectionalLight(0xfff4e2, 1.3);
       key.castShadow = this.quality === 'high';
       key.shadow.mapSize.set(this.quality === 'high' ? 4096 : 1024, this.quality === 'high' ? 4096 : 1024);
       key.shadow.bias = -0.0004; key.shadow.normalBias = 4;
       const sc = key.shadow.camera; sc.near = 100; sc.far = 9000;
       S.add(key); S.add(key.target);
 
-      // the table: board texture on felt, mahogany rim, casino carpet far below
+      // the table: board texture on felt and a mahogany rim; it floats in the sky (scenery3d adds the edge and clouds)
       const size = map.size * map.cell;
       const bc = PTD.Art.boardCanvas(map, g.players, 6);
       if (PTD.Scenery3D) PTD.Scenery3D.decorateBoard(bc.canvas.getContext('2d'), bc.px, map, 6);
@@ -321,15 +292,11 @@ window.PTD = window.PTD || {};
         const m = new T.Mesh(new T.BoxGeometry(w, rimH + 900, d), wood);
         m.position.copy(W2T(x, y, rimH / 2 - 450)); m.receiveShadow = true; S.add(m);
       });
-      const floor = new T.Mesh(new T.PlaneGeometry(90000, 90000), new T.MeshToonMaterial({ map: carpetTexture(), color: '#ffffff', gradientMap: toonRamp() }));
-      floor.rotation.x = -Math.PI / 2; floor.position.y = -900; floor.receiveShadow = true;
-      S.add(floor);
 
       this.buildFelt(board);
       this.buildWalls();
       this.buildVault();
       this.buildPortals();
-      this.buildRoom();
       this.buildDust();
       this.scenery = PTD.Scenery3D ? PTD.Scenery3D.build(this) : null;
       if (PTD.Looters3D && !PTD.Looters3D.loading) { PTD.Looters3D.loading = true; PTD.Looters3D.loadModels(); }
@@ -473,42 +440,6 @@ window.PTD = window.PTD || {};
         const light = new T.PointLight(col, 0.9, 1400, 0); light.position.y = 200; grp.add(light);
         this.scene.add(grp);
         this.portals.push({ grp, ring, inner });
-      }
-    }
-
-    // The casino around the table: slot machines glowing in the dark and hanging lamps.
-    buildRoom() {
-      const S = this.scene;
-      this.slots = [];
-      const cab = std('#15121c', { metalness: 0.6, roughness: 0.35 });
-      const hues = ['#ff3d6e', '#3dd6ff', '#ffd23d', '#8b5cff', '#3dff8b'];
-      for (let i = 0; i < 36; i++) {
-        const a = (i / 36) * TAU, r = 11500 + (i % 2) * 900;
-        const grp = new T.Group();
-        grp.position.set(Math.cos(a) * r, -900, Math.sin(a) * r);
-        grp.lookAt(0, -900, 0);
-        const body = new T.Mesh(new T.BoxGeometry(700, 1600, 600), cab); body.position.y = 800; grp.add(body);
-        const scr = new T.Mesh(new T.PlaneGeometry(520, 380), new T.MeshBasicMaterial({ color: hues[i % hues.length] }));
-        scr.position.set(0, 1050, 301); grp.add(scr);
-        const topLight = new T.Mesh(new T.BoxGeometry(720, 90, 620), new T.MeshBasicMaterial({ color: hues[(i + 2) % hues.length] }));
-        topLight.position.y = 1650; grp.add(topLight);
-        S.add(grp);
-        this.slots.push({ scr, topLight, base: new T.Color(hues[i % hues.length]), base2: new T.Color(hues[(i + 2) % hues.length]), ph: Math.random() * TAU });
-      }
-      // hanging lamps over the four quarters of the table (the original map's light spots)
-      for (const [lx, ly] of [[-3264, 3264], [3264, 3264], [3264, -3264], [-3264, -3264]]) {
-        const lamp = new T.Group(); lamp.position.copy(W2T(lx, ly, 3300));
-        const shade = new T.Mesh(new T.ConeGeometry(420, 300, 32, 1, true), std('#173b2a', { side: T.DoubleSide, metalness: 0.3, roughness: 0.5 }));
-        lamp.add(shade);
-        const bulb = new T.Mesh(new T.SphereGeometry(90, 16, 12), glowMat('#fff1c4', 4)); bulb.position.y = -120; lamp.add(bulb);
-        const cord = new T.Mesh(new T.CylinderGeometry(6, 6, 3000, 6), std('#111')); cord.position.y = 1650; lamp.add(cord);
-        S.add(lamp);
-        // a soft visible beam of light under each lamp
-        const shaft = new T.Mesh(new T.CylinderGeometry(330, 1100, 3200, 40, 1, true), new T.MeshBasicMaterial({ map: shaftTexture(), color: new T.Color('#ffd9a0').multiplyScalar(0.03), transparent: true, depthWrite: false, blending: T.AdditiveBlending, side: T.DoubleSide, fog: false }));
-        shaft.position.copy(W2T(lx, ly, 1650)); S.add(shaft);
-        const spot = new T.SpotLight(0xffd9a0, 0.45, 9000, 0.7, 0.75, 0);
-        spot.position.copy(W2T(lx, ly, 3100)); spot.target.position.copy(W2T(lx, ly, 0));
-        S.add(spot); S.add(spot.target);
       }
     }
 
@@ -1241,11 +1172,6 @@ window.PTD = window.PTD || {};
       const t = now / 1000;
       this.vaultDial.rotation.y = t * 0.25;
       for (const p of this.portals) { p.ring.rotation.z = t * 1.5; p.inner.material.opacity = 0.35 + 0.2 * Math.sin(t * 3); p.grp.children[0].rotation.y = t; }
-      for (const s of this.slots) {
-        const k = 0.6 + 0.4 * Math.sin(t * 2 + s.ph);
-        s.scr.material.color.copy(s.base).multiplyScalar(1.2 * k + 0.3);
-        s.topLight.material.color.copy(s.base2).multiplyScalar(0.8 + 0.8 * (Math.sin(t * 5 + s.ph) > 0.6 ? 1 : 0));
-      }
       if (this.scenery) this.scenery.update(t, dt);
       this.dust.rotation.y = t * 0.01;
       this.dust.position.y = Math.sin(t * 0.2) * 40;
