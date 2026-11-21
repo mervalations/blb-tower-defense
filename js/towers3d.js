@@ -64,16 +64,25 @@ window.PTD = window.PTD || {};
     if (style.bright) { const mx = Math.max(c.r, c.g, c.b); if (mx > 0.62) c.multiplyScalar(0.62 / mx); }   // whites stay white, not glowing
     if (style.bright) { const hsl = {}; c.getHSL(hsl); c.setHSL(hsl.h, Math.min(1, hsl.s * 1.25), hsl.l); }
     const t = new T.MeshToonMaterial({ color: c, map: m.map || null, gradientMap: ramp(), emissive: m.emissive ? m.emissive.clone() : new T.Color(0), emissiveMap: m.emissiveMap || null, vertexColors: !!m.vertexColors });
-    if (style.rim) {
-      // a coloured fresnel rim so characters pop against the dark table
-      const rim = new T.Color(style.rim);
-      t.onBeforeCompile = (sh) => {
-        sh.uniforms.rimColor = { value: rim };
-        sh.fragmentShader = 'uniform vec3 rimColor;\n' + sh.fragmentShader.replace('#include <dithering_fragment>',
-          '#include <dithering_fragment>\n float rimK = pow(1.0 - abs(dot(normalize(vNormal), normalize(vViewPosition))), 2.5);\n gl_FragColor.rgb += rimColor * rimK * 0.55;');
-      };
-      t.customProgramCacheKey = () => 'rim';
-    }
+    // Glossy-toy finish: a crisp cartoon specular highlight from the sun on every part, plus an
+    // optional coloured fresnel rim so characters pop against the table.
+    const rim = style.rim ? new T.Color(style.rim) : null;
+    const gloss = m.metalness > 0.5 ? 0.55 : (m.roughness < 0.4 ? 0.4 : 0.22);
+    t.onBeforeCompile = (sh) => {
+      sh.uniforms.rimColor = { value: rim || new T.Color(0) };
+      sh.uniforms.gloss = { value: gloss };
+      sh.fragmentShader = 'uniform vec3 rimColor; uniform float gloss;\n' + sh.fragmentShader.replace('#include <dithering_fragment>',
+        `#include <dithering_fragment>
+        vec3 vdir = normalize(vViewPosition);
+        #if NUM_DIR_LIGHTS > 0
+          vec3 hv = normalize(directionalLights[0].direction + vdir);
+          float spk = smoothstep(0.955, 0.972, max(dot(normal, hv), 0.0));
+          gl_FragColor.rgb += spk * gloss * 0.55;
+        #endif
+        float rimK = pow(1.0 - abs(dot(normal, vdir)), 2.5);
+        gl_FragColor.rgb += rimColor * rimK * 0.55;`);
+    };
+    t.customProgramCacheKey = () => 'toonGloss';
     if (own) return t;
     t.userData.shared = true;
     toonCache.set(key, t);

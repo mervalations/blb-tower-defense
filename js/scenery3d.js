@@ -65,8 +65,8 @@ window.PTD = window.PTD || {};
     // ------------------------------------------------------------ cartoon cobblestone paths
     {
       const tile = canvasTex(512, 512, (x, W) => {
-        x.fillStyle = '#2b1d14'; x.fillRect(0, 0, W, W);                       // mortar
-        const stones = ['#9c8a74', '#8a7864', '#b09a7e', '#7d6c5a', '#a48c70', '#c2a988'];
+        x.fillStyle = '#5a3418'; x.fillRect(0, 0, W, W);                       // mortar
+        const stones = ['#e9bf73', '#dca062', '#f4d391', '#cf8c55', '#e8b274', '#ddbd86', '#c9a27a'];
         let sd = 7; const rn = () => { sd = (sd * 16807) % 2147483647; return sd / 2147483647; };
         const rows = 8, h = W / rows;
         for (let r = 0; r < rows; r++) {
@@ -78,8 +78,10 @@ window.PTD = window.PTD || {};
               const X = cx + 5 + ox, Y = y + 5, Wd = w - 10, Hd = h - 10, R = 14;
               x.beginPath(); x.moveTo(X + R, Y); x.arcTo(X + Wd, Y, X + Wd, Y + Hd, R); x.arcTo(X + Wd, Y + Hd, X, Y + Hd, R);
               x.arcTo(X, Y + Hd, X, Y, R); x.arcTo(X, Y, X + Wd, Y, R); x.closePath();
-              x.fillStyle = col; x.fill();
-              x.lineWidth = 5; x.strokeStyle = 'rgba(255,255,255,0.22)';             // cartoon highlight
+              const sg = x.createLinearGradient(X, Y, X, Y + Hd);
+              sg.addColorStop(0, col); sg.addColorStop(1, PTD.Art.shade(col, -0.18));
+              x.fillStyle = sg; x.fill();
+              x.lineWidth = 6; x.strokeStyle = 'rgba(255,255,255,0.45)';             // cartoon highlight
               x.beginPath(); x.moveTo(X + R, Y + 4); x.lineTo(X + Wd - R, Y + 4); x.stroke();
               x.strokeStyle = 'rgba(0,0,0,0.35)';                                      // and shadow edge
               x.beginPath(); x.moveTo(X + R, Y + Hd - 3); x.lineTo(X + Wd - R, Y + Hd - 3); x.stroke();
@@ -90,7 +92,7 @@ window.PTD = window.PTD || {};
         }
       });
       tile.wrapS = tile.wrapT = T.RepeatWrapping;
-      const roadMat = new T.MeshStandardMaterial({ map: tile, roughness: 0.85, envMapIntensity: 0.2 });
+      const roadMat = new T.MeshStandardMaterial({ map: tile, color: '#e6dccb', roughness: 0.8, envMapIntensity: 0.2 });
       roadMat.onBeforeCompile = (sh) => {
         sh.vertexShader = sh.vertexShader.replace('#include <uv_vertex>', `#include <uv_vertex>
           { vec4 wp = modelMatrix * instanceMatrix * vec4(position, 1.0); vMapUv = vec2(wp.x, -wp.z) / 300.0; }`);
@@ -514,26 +516,39 @@ window.PTD = window.PTD || {};
     ctx.save();
     const seal = (wx, wy, r) => {
       const [x, y] = toPx(wx, wy), R = r / upp;
-      ctx.strokeStyle = 'rgba(214,170,72,0.35)'; ctx.lineWidth = Math.max(1, 10 / upp);
+      const glow = ctx.createRadialGradient(x, y, R * 0.2, x, y, R * 1.15);
+      glow.addColorStop(0, 'rgba(255,240,170,0.28)'); glow.addColorStop(1, 'rgba(255,240,170,0)');
+      ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(x, y, R * 1.15, 0, TAU); ctx.fill();
+      ctx.strokeStyle = 'rgba(240,190,70,0.75)'; ctx.lineWidth = Math.max(1, 12 / upp);
       ctx.beginPath(); ctx.arc(x, y, R, 0, TAU); ctx.stroke();
       ctx.beginPath(); ctx.arc(x, y, R * 0.82, 0, TAU); ctx.stroke();
-      ctx.fillStyle = 'rgba(214,170,72,0.28)';
+      ctx.fillStyle = 'rgba(245,200,80,0.6)';
       ctx.font = 'bold ' + Math.round(R * 0.62) + 'px Georgia, serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       ctx.fillText('BLB', x, y + R * 0.04);
       ctx.font = Math.round(R * 0.22) + 'px Georgia, serif';
       ['♠', '♥', '♦', '♣'].forEach((s, i) => { const a = i / 4 * TAU - Math.PI / 4; ctx.fillText(s, x + Math.cos(a) * R * 0.91, y + Math.sin(a) * R * 0.91); });
     };
-    // quilted felt: diamond stitching across the whole table
-    ctx.strokeStyle = 'rgba(0,0,0,0.16)'; ctx.lineWidth = Math.max(1, 10 / upp);
+    // quilted felt: each diamond gets a soft raised highlight, creased edges and gold stitching
     const q = 420 / upp;
-    for (let k = -px; k < px * 2; k += q) {
-      ctx.beginPath(); ctx.moveTo(k, 0); ctx.lineTo(k + px, px); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(k, 0); ctx.lineTo(k - px, px); ctx.stroke();
+    ctx.save();
+    ctx.globalCompositeOperation = 'soft-light';
+    for (let i = -2; i < px / q + 2; i++) for (let j = -2; j < px / q * 2 + 2; j++) {
+      const cx = i * q + (j % 2 ? q / 2 : 0), cy = j * q / 2;
+      const gr = ctx.createRadialGradient(cx - q * 0.12, cy - q * 0.16, q * 0.05, cx, cy, q * 0.55);
+      gr.addColorStop(0, 'rgba(255,255,255,0.55)'); gr.addColorStop(0.6, 'rgba(255,255,255,0.0)'); gr.addColorStop(1, 'rgba(0,0,0,0.45)');
+      ctx.fillStyle = gr;
+      ctx.beginPath(); ctx.moveTo(cx, cy - q / 2); ctx.lineTo(cx + q / 2, cy); ctx.lineTo(cx, cy + q / 2); ctx.lineTo(cx - q / 2, cy); ctx.closePath(); ctx.fill();
     }
-    ctx.strokeStyle = 'rgba(255,240,200,0.08)'; ctx.lineWidth = Math.max(1, 4 / upp); ctx.setLineDash([8 / upp, 10 / upp]);
+    ctx.restore();
+    ctx.strokeStyle = 'rgba(0,40,20,0.35)'; ctx.lineWidth = Math.max(1, 8 / upp);
     for (let k = -px; k < px * 2; k += q) {
-      ctx.beginPath(); ctx.moveTo(k + 14 / upp, 0); ctx.lineTo(k + px + 14 / upp, px); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(k + 14 / upp, 0); ctx.lineTo(k - px + 14 / upp, px); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(k + q / 2, 0); ctx.lineTo(k + q / 2 + px, px); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(k + q / 2, 0); ctx.lineTo(k + q / 2 - px, px); ctx.stroke();
+    }
+    ctx.strokeStyle = 'rgba(255,214,110,0.45)'; ctx.lineWidth = Math.max(1, 4 / upp); ctx.setLineDash([10 / upp, 9 / upp]);
+    for (let k = -px; k < px * 2; k += q) {
+      ctx.beginPath(); ctx.moveTo(k + q / 2 + 16 / upp, 0); ctx.lineTo(k + q / 2 + px + 16 / upp, px); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(k + q / 2 + 16 / upp, 0); ctx.lineTo(k + q / 2 - px + 16 / upp, px); ctx.stroke();
     }
     ctx.setLineDash([]);
     // big seals in the open felt between lanes on each side of the vault
@@ -546,7 +561,7 @@ window.PTD = window.PTD || {};
       const wx = map.origin + r() * map.size * map.cell, wy = map.origin + r() * map.size * map.cell;
       if (map.cellAt(wx, wy) !== 0) continue;
       const [x, y] = toPx(wx, wy);
-      ctx.fillStyle = 'rgba(255,255,255,0.05)';
+      ctx.fillStyle = ['rgba(10,40,30,0.22)', 'rgba(255,70,90,0.26)', 'rgba(255,90,70,0.26)', 'rgba(10,40,30,0.22)'][i % 4];
       ctx.fillText(['♠', '♥', '♦', '♣'][i % 4], x, y);
     }
     // gold filigree border around the playfield

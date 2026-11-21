@@ -147,7 +147,30 @@
       case 'bossAttack': if (d.creep.owner === me.id && performance.now() > ui.shellWarned) { ui.shellWarned = performance.now() + 8000; A.clip(PTD.BOSS_ATTACK_SFX); toast(PTD.BOSSES[d.creep.bossIdx].name + ' is shelling your towers!', true); } break;
       case 'towerDestroyed': if (d.tower.owner === me.id) A.play('boom'); break;
       case 'gameOver': A.music.setMood('lounge'); setTimeout(() => showOver(d), 900); break;
-      case 'shot': if (d.tower.owner === me.id) A.play('shot', d.fx); break;
+      case 'shot': shotSound(d, me); break;
+    }
+  }
+
+  // Tower fire: panned to where the tower sits on screen; your own towers are loud, rivals' quiet
+  // and only when in view. The impact plays when the shot should land (travel time).
+  function shotSound(d, me) {
+    const t = d.tower; if (!t || t.x == null || !renderer) return;
+    const mine = t.owner === me.id;
+    const where = (x, y) => {
+      if (!renderer.worldToScreen) return { pan: 0, vol: 1 };
+      const s = renderer.worldToScreen(x, y), W = renderer.W || 1, H = renderer.H || 1;
+      const off = Math.max(0, Math.abs(s.x / W - 0.5) - 0.5, Math.abs(s.y / H - 0.5) - 0.5);   // 0 on screen
+      return { pan: (s.x / W - 0.5) * 1.4, vol: Math.max(0, 1 - off * 2.5) };
+    };
+    const p = where(t.x, t.y);
+    p.vol *= mine ? 1 : 0.35;
+    if (p.vol < 0.05) return;
+    A.play('shot', { fx: d.fx, vol: p.vol, pan: p.pan });
+    const c = d.target;
+    if (c && c.x != null && d.fx !== 'chain') {
+      const st = t.stats || {}, dist = Math.hypot(c.x - t.x, c.y - t.y), ms = Math.min(1500, dist / (st.speed || 900) * 1000 / (ui.speed || 1));
+      const q = where(c.x, c.y); q.vol *= mine ? 0.9 : 0.3;
+      setTimeout(() => { if (q.vol > 0.05) A.play('impact', { fx: d.fx, vol: q.vol, pan: q.pan }); }, ms);
     }
   }
 

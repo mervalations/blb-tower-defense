@@ -146,6 +146,31 @@ window.PTD = window.PTD || {};
     return cache.env;
   }
 
+  // Tufted casino velvet: diamond pleats with a gold button at every corner (tiles seamlessly).
+  function velvetTexture() {
+    if (cache.tex.velvet) return cache.tex.velvet;
+    const c = document.createElement('canvas'); c.width = c.height = 256;
+    const x = c.getContext('2d');
+    x.fillStyle = '#5c0818'; x.fillRect(0, 0, 256, 256);
+    const puff = (cx, cy) => {
+      const g = x.createRadialGradient(cx - 14, cy - 18, 6, cx, cy, 92);
+      g.addColorStop(0, '#e8475c'); g.addColorStop(0.45, '#b5172f'); g.addColorStop(1, '#4f0614');
+      x.fillStyle = g; x.beginPath(); x.moveTo(cx, cy - 64); x.lineTo(cx + 64, cy); x.lineTo(cx, cy + 64); x.lineTo(cx - 64, cy); x.closePath(); x.fill();
+    };
+    for (let i = 0; i <= 4; i++) for (let j = 0; j <= 4; j++) if (!((i + j) % 2)) puff(i * 64, j * 64);
+    x.strokeStyle = 'rgba(40,0,8,0.55)'; x.lineWidth = 3;
+    for (let k = -256; k <= 512; k += 128) { x.beginPath(); x.moveTo(k + 64, 0); x.lineTo(k + 64 + 256, 256); x.stroke(); x.beginPath(); x.moveTo(k + 64, 0); x.lineTo(k + 64 - 256, 256); x.stroke(); }
+    for (let i = 0; i <= 4; i++) for (let j = 0; j <= 4; j++) {
+      if (!((i + j) % 2)) continue;
+      const bx = i * 64, by = j * 64;
+      const g = x.createRadialGradient(bx - 2, by - 2, 1, bx, by, 6);
+      g.addColorStop(0, '#fff6c8'); g.addColorStop(0.5, '#f1c232'); g.addColorStop(1, '#8a5d08');
+      x.fillStyle = g; x.beginPath(); x.arc(bx, by, 6, 0, TAU); x.fill();
+    }
+    const t = canvasTex(c); t.wrapS = t.wrapT = T.RepeatWrapping;
+    return (cache.tex.velvet = t);
+  }
+
   function toonRamp() {
     if (cache.tex.ramp) return cache.tex.ramp;
     const t = new T.DataTexture(new Uint8Array([150, 150, 150, 255, 210, 210, 210, 255, 255, 255, 255, 255]), 3, 1, T.RGBAFormat);
@@ -167,15 +192,54 @@ window.PTD = window.PTD || {};
       s += texture2D(tDiffuse, vUv + dir * 1.385).rgb * 0.316; s += texture2D(tDiffuse, vUv - dir * 1.385).rgb * 0.316;
       s += texture2D(tDiffuse, vUv + dir * 3.231).rgb * 0.070; s += texture2D(tDiffuse, vUv - dir * 3.231).rgb * 0.070;
       gl_FragColor = vec4(s, 1.0); }`;
+  // Screen-space ambient occlusion from the depth buffer: soft contact shadows wherever
+  // things meet (towers on the felt, looters' feet, the base of walls).
+  const AO_FS = `uniform sampler2D tDepth; uniform mat4 proj; uniform mat4 projInv; uniform float radius; uniform vec2 res; varying vec2 vUv;
+    vec3 viewPos(vec2 uv){ float d = texture2D(tDepth, uv).x; vec4 p = projInv * vec4(uv * 2.0 - 1.0, d * 2.0 - 1.0, 1.0); return p.xyz / p.w; }
+    float hash(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+    void main(){
+      float d0 = texture2D(tDepth, vUv).x;
+      if (d0 >= 0.99999) { gl_FragColor = vec4(1.0); return; }
+      vec3 P = viewPos(vUv);
+      vec3 px = viewPos(vUv + vec2(1.0 / res.x, 0.0)) - P, py = viewPos(vUv + vec2(0.0, 1.0 / res.y)) - P;
+      vec3 N = normalize(cross(px, py));
+      float a0 = hash(vUv * res) * 6.2831;
+      vec3 rv = vec3(cos(a0), sin(a0), 0.0);
+      vec3 Tn = normalize(rv - N * dot(rv, N)); vec3 B = cross(N, Tn);
+      float occ = 0.0;
+      for (int i = 0; i < 14; i++) {
+        float fi = float(i);
+        float r = (fi + 1.0) / 14.0; r = mix(0.12, 1.0, r * r);
+        float a = fi * 2.39996; float z = 0.25 + 0.75 * fract(fi * 0.618);
+        vec3 k = vec3(cos(a) * sqrt(1.0 - z * z), sin(a) * sqrt(1.0 - z * z), z);
+        vec3 S = P + (Tn * k.x + B * k.y + N * k.z) * radius * r;
+        vec4 q = proj * vec4(S, 1.0); vec2 uv = q.xy / q.w * 0.5 + 0.5;
+        float sz = viewPos(uv).z;
+        float range = smoothstep(0.0, 1.0, radius / abs(P.z - sz));
+        occ += (sz >= S.z + radius * 0.04 ? 1.0 : 0.0) * range;
+      }
+      gl_FragColor = vec4(vec3(1.0 - min(1.0, occ / 14.0 * 1.5)), 1.0); }`;
+  const AOBLUR_FS = `uniform sampler2D tDiffuse; uniform vec2 dir; varying vec2 vUv;
+    void main(){ float s = 0.0;
+      for (int i = -3; i <= 3; i++) s += texture2D(tDiffuse, vUv + dir * float(i) * 1.5).r * (1.0 - abs(float(i)) / 4.5);
+      gl_FragColor = vec4(vec3(s / 4.333), 1.0); }`;
   const COMP_FS = `uniform sampler2D tScene; uniform sampler2D tB1; uniform sampler2D tB2; uniform float strength;
+    uniform sampler2D tAO; uniform float aoK; uniform sampler2D tSoft; uniform float tilt;
     uniform float exposure; uniform float flash; uniform vec3 flashColor; varying vec2 vUv;
     vec3 aces(vec3 x){ return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0); }
     void main(){
-      vec3 c = texture2D(tScene, vUv).rgb + (texture2D(tB1, vUv).rgb * 0.7 + texture2D(tB2, vUv).rgb * 1.0) * strength;
+      vec3 base = texture2D(tScene, vUv).rgb;
+      float far = tilt * smoothstep(0.62, 0.98, vUv.y);           // a touch of depth-of-field on the far side of the table
+      base = mix(base, texture2D(tSoft, vUv).rgb, far);
+      float ao = mix(1.0, texture2D(tAO, vUv).r, aoK);
+      base *= ao * ao;
+      vec3 c = base + (texture2D(tB1, vUv).rgb * 0.7 + texture2D(tB2, vUv).rgb * 1.0) * strength;
       c = aces(c * exposure);
       float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
-      c = mix(vec3(l), c, 0.96);                                   // slightly muted, filmic
-      c = clamp((c - 0.5) * 1.04 + 0.5, 0.0, 1.0);                 // contrast
+      float sat = max(c.r, max(c.g, c.b)) - min(c.r, min(c.g, c.b));
+      c = mix(vec3(l), c, 1.08 + 0.17 * (1.0 - sat));             // vivid, cartoon colour: dull colours get the biggest boost
+      c = clamp((c - 0.5) * 1.07 + 0.5, 0.0, 1.0);                 // contrast
+      c = clamp(c, 0.0, 1.0);
 
       vec2 d = vUv - 0.5; float v = smoothstep(0.85, 0.25, length(d * vec2(1.1, 1.0)));
       c *= mix(0.82, 1.0, v);
@@ -195,14 +259,21 @@ window.PTD = window.PTD || {};
       const sh = (fs, uniforms) => new T.ShaderMaterial({ vertexShader: VS, fragmentShader: fs, uniforms, depthTest: false, depthWrite: false });
       this.bright = sh(BRIGHT_FS, { tDiffuse: { value: null }, threshold: { value: 2.3 } });   // only true glows bloom; sunlit whites stay crisp
       this.blur = sh(BLUR_FS, { tDiffuse: { value: null }, dir: { value: new T.Vector2() } });
+      this.ao = sh(AO_FS, { tDepth: { value: null }, proj: { value: new T.Matrix4() }, projInv: { value: new T.Matrix4() }, radius: { value: 80 }, res: { value: new T.Vector2() } });
+      this.aoBlur = sh(AOBLUR_FS, { tDiffuse: { value: null }, dir: { value: new T.Vector2() } });
       this.comp = sh(COMP_FS, { tScene: { value: null }, tB1: { value: null }, tB2: { value: null }, strength: { value: 1.0 },
+        tAO: { value: null }, aoK: { value: 0 }, tSoft: { value: null }, tilt: { value: 0 },
         exposure: { value: 0.95 }, flash: { value: 0 }, flashColor: { value: new T.Color(0.9, 0.05, 0.05) } });
-      this.bloom = true;
+      this.bloom = true; this.aoOn = true; this.aoRadius = 80; this.tiltK = 0;
+      this.white = new T.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1); this.white.needsUpdate = true;
     }
     setSize(w, h) {
       const mk = (a, b, ms) => new T.WebGLRenderTarget(Math.max(1, a), Math.max(1, b), { type: T.HalfFloatType, samples: ms || 0 });
-      [this.rt, this.h1, this.h2, this.q1, this.q2].forEach(r => r && r.dispose());
+      [this.rt, this.h1, this.h2, this.q1, this.q2, this.a1, this.a2, this.s1, this.s2].forEach(r => r && r.dispose());
       this.rt = mk(w, h, 4);
+      this.rt.depthTexture = new T.DepthTexture(w, h); this.rt.depthTexture.type = T.UnsignedIntType;
+      this.a1 = mk(w >> 1, h >> 1); this.a2 = mk(w >> 1, h >> 1);
+      this.s1 = mk(w >> 1, h >> 1); this.s2 = mk(w >> 1, h >> 1);
       this.h1 = mk(w >> 1, h >> 1); this.h2 = mk(w >> 1, h >> 1);
       this.q1 = mk(w >> 2, h >> 2); this.q2 = mk(w >> 2, h >> 2);
     }
@@ -215,13 +286,29 @@ window.PTD = window.PTD || {};
     render(scene, camera) {
       const gl = this.gl;
       gl.setRenderTarget(this.rt); gl.render(scene, camera);
+      const u = this.comp.uniforms;
+      if (this.aoOn) {
+        const a = this.ao.uniforms;
+        a.tDepth.value = this.rt.depthTexture; a.proj.value.copy(camera.projectionMatrix); a.projInv.value.copy(camera.projectionMatrixInverse);
+        a.radius.value = this.aoRadius; a.res.value.set(this.a1.width, this.a1.height);
+        this.pass(this.ao, this.a1);
+        const b = this.aoBlur.uniforms;
+        b.tDiffuse.value = this.a1.texture; b.dir.value.set(1 / this.a1.width, 0); this.pass(this.aoBlur, this.a2);
+        b.tDiffuse.value = this.a2.texture; b.dir.value.set(0, 1 / this.a1.height); this.pass(this.aoBlur, this.a1);
+        u.tAO.value = this.a1.texture; u.aoK.value = 0.85;
+      } else { u.tAO.value = this.white; u.aoK.value = 0; }
+      if (this.tiltK > 0.01) {
+        const bl = this.blur.uniforms;
+        bl.tDiffuse.value = this.rt.texture; bl.dir.value.set(1.6 / this.s1.width, 0); this.pass(this.blur, this.s2);
+        bl.tDiffuse.value = this.s2.texture; bl.dir.value.set(0, 1.6 / this.s1.height); this.pass(this.blur, this.s1);
+        u.tSoft.value = this.s1.texture; u.tilt.value = this.tiltK;
+      } else { u.tSoft.value = this.rt.texture; u.tilt.value = 0; }
       if (this.bloom) {
         this.bright.uniforms.tDiffuse.value = this.rt.texture; this.pass(this.bright, this.h1);
         this.blurInto(this.h1, this.h1, this.h2);
         this.blurInto(this.h1, this.q1, this.q2);
         this.blurInto(this.q1, this.q1, this.q2);
       }
-      const u = this.comp.uniforms;
       u.tScene.value = this.rt.texture; u.tB1.value = this.h1.texture; u.tB2.value = this.q1.texture;
       u.strength.value = this.bloom ? 0.75 : 0.0;
       this.pass(this.comp, null);
@@ -270,8 +357,8 @@ window.PTD = window.PTD || {};
       S.environment = buildEnvironment(this.gl);
 
       // light: sunny key light with shadows + sky/ground fill
-      S.add(new T.HemisphereLight(0xdff1ff, 0x9ab88a, 1.0));
-      const key = this.key = new T.DirectionalLight(0xfff4e2, 1.3);
+      S.add(new T.HemisphereLight(0xcfe6ff, 0xa58fd0, 1.05));
+      const key = this.key = new T.DirectionalLight(0xffefd2, 1.4);
       key.castShadow = this.quality === 'high';
       key.shadow.mapSize.set(this.quality === 'high' ? 4096 : 1024, this.quality === 'high' ? 4096 : 1024);
       key.shadow.bias = -0.0004; key.shadow.normalBias = 4;
@@ -382,19 +469,31 @@ window.PTD = window.PTD || {};
         const edge = r.x0 === 0 || r.y0 === 0 || r.x1 === N || r.y1 === N;
         return !(Math.abs(cx) < 700 && Math.abs(cy) < 700) && !(edge && (r.x1 - r.x0 > 300 || r.y1 - r.y0 > 300));
       });
-      const H = 150;
-      const lacquer = mat('lacquerWall', () => new T.MeshToonMaterial({ color: '#8a4a28', map: woodTexture(), gradientMap: toonRamp() }));
+      const H = 130;
+      // polished mahogany sides, a gold trim band, and a plump tufted-velvet cushion on top
+      const lacquer = mat('lacquerWall', () => new T.MeshToonMaterial({ color: '#b0502c', map: woodTexture(), gradientMap: toonRamp() }));
+      const velvet = mat('velvetTop', () => {
+        const m = new T.MeshStandardMaterial({ map: velvetTexture(), color: '#dcc4c8', roughness: 0.85, envMapIntensity: 0.4 });
+        m.onBeforeCompile = (sh) => {
+          sh.vertexShader = sh.vertexShader.replace('#include <uv_vertex>', `#include <uv_vertex>
+            { vec4 wp = modelMatrix * instanceMatrix * vec4(position, 1.0); vMapUv = vec2(wp.x, -wp.z) / 340.0; }`);
+        };
+        return m;
+      });
+      const goldTrim = std('#f0b92a', { metalness: 0.9, roughness: 0.22, emissive: new T.Color('#3a2400') });
       const body = new T.InstancedMesh(new T.BoxGeometry(1, 1, 1), lacquer, keep.length);
-      const cap = new T.InstancedMesh(new T.BoxGeometry(1, 1, 1), mat('lacquerCap', () => new T.MeshToonMaterial({ color: '#6e3a1e', gradientMap: toonRamp() })), keep.length);
+      const trim = new T.InstancedMesh(new T.BoxGeometry(1, 1, 1), goldTrim, keep.length);
+      const cap = new T.InstancedMesh(new T.BoxGeometry(1, 1, 1), velvet, keep.length);
       const d = new T.Object3D();
       keep.forEach((r, i) => {
         const w = (r.x1 - r.x0) * cell, h = (r.y1 - r.y0) * cell;
         const cx = map.origin + r.x0 * cell + w / 2, cy = map.origin + r.y0 * cell + h / 2;
         d.position.copy(W2T(cx, cy, H / 2)); d.scale.set(w, H, h); d.updateMatrix(); body.setMatrixAt(i, d.matrix);
-        d.position.y = H + 3; d.scale.set(w + 10, 6, h + 10); d.updateMatrix(); cap.setMatrixAt(i, d.matrix);
+        d.position.y = H + 6; d.scale.set(w + 14, 14, h + 14); d.updateMatrix(); trim.setMatrixAt(i, d.matrix);
+        d.position.y = H + 22; d.scale.set(Math.max(10, w - 10), 20, Math.max(10, h - 10)); d.updateMatrix(); cap.setMatrixAt(i, d.matrix);
       });
-      body.castShadow = body.receiveShadow = true;
-      this.scene.add(body); this.scene.add(cap);
+      body.castShadow = body.receiveShadow = true; cap.receiveShadow = true; trim.castShadow = true;
+      this.scene.add(body); this.scene.add(trim); this.scene.add(cap);
     }
 
     buildVault() {
@@ -1193,6 +1292,12 @@ window.PTD = window.PTD || {};
 
       this.post.comp.uniforms.flash.value = this.flash;
       this.post.bloom = this.quality === 'high';
+      this.post.aoOn = this.quality === 'high';
+      {   // occlusion reach and far-side softness follow the camera height
+        const camH = Math.max(1, this.camera.position.y);
+        this.post.aoRadius = Math.min(300, Math.max(50, camH * 0.045));
+        this.post.tiltK = this.quality === 'high' ? 0.55 : 0;
+      }
       this.post.render(this.scene, this.camera);
 
       // automatic quality drop on slow machines

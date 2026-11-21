@@ -47,6 +47,7 @@ PTD.Audio = (function () {
   // o: { f, f1 (end pitch), type, dur, vol, at (attack), delay, cut (filter Hz), cut1, q, wet, vib, vibRate, detune, pan }
   function synth(o) {
     if (muted || !bus()) return;
+    if (place.vol !== 1 || place.pan) o = Object.assign({}, o, { vol: (o.vol || 0.2) * place.vol, pan: o.pan || place.pan });
     const t0 = ctx.currentTime + (o.delay || 0), dur = o.dur || 0.2;
     const out = ctx.createGain(); out.gain.value = 1;
     const g = ctx.createGain();
@@ -76,6 +77,7 @@ PTD.Audio = (function () {
   // o: { dur, vol, f (filter Hz), f1, q, type ('bandpass' | 'lowpass' | 'highpass'), delay, wet, at }
   function hiss(o) {
     if (muted || !bus()) return;
+    if (place.vol !== 1 || place.pan) o = Object.assign({}, o, { vol: (o.vol || 0.2) * place.vol, pan: o.pan || place.pan });
     const t0 = ctx.currentTime + (o.delay || 0), dur = o.dur || 0.1;
     const s = ctx.createBufferSource(); s.buffer = noiseBuf; s.loop = true;
     const f = ctx.createBiquadFilter(); f.type = o.type || 'bandpass'; f.Q.value = o.q || 1;
@@ -85,7 +87,8 @@ PTD.Audio = (function () {
     g.gain.setValueAtTime(0.0001, t0);
     g.gain.exponentialRampToValueAtTime(o.vol || 0.2, t0 + (o.at || 0.004));
     g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-    s.connect(f); f.connect(g); g.connect(master);
+    s.connect(f); f.connect(g);
+    if (o.pan && ctx.createStereoPanner) { const p = ctx.createStereoPanner(); p.pan.value = o.pan; g.connect(p); p.connect(master); } else g.connect(master);
     if (o.wet) { const w = ctx.createGain(); w.gain.value = o.wet; g.connect(w); w.connect(verb); }
     s.start(t0, Math.random() * 0.5); s.stop(t0 + dur + 0.05);
   }
@@ -153,17 +156,54 @@ PTD.Audio = (function () {
     }
   }
 
+  // ---------------------------------------------------------------- tower weapons
+  // Every tower type has its own firing sound and an impact sound when the shot lands.
+  // `place` positions them: stereo pan from where the tower sits on screen, quieter for
+  // towers that aren't yours or are off at the edge of the view.
+  const place = { vol: 1, pan: 0 };
+  let shotBudget = 0, shotBudgetT = 0;
+  function budget() {                       // at most ~16 weapon sounds per quarter second
+    const now = performance.now();
+    if (now - shotBudgetT > 250) { shotBudgetT = now; shotBudget = 0; }
+    return ++shotBudget <= 16;
+  }
+  function spatial(o, fn) {
+    place.vol = o && o.vol != null ? o.vol : 1; place.pan = o && o.pan ? Math.max(-0.85, Math.min(0.85, o.pan)) : 0;
+    try { fn(); } finally { place.vol = 1; place.pan = 0; }
+  }
   const SHOTS = {
-    arrow: () => { hiss({ dur: 0.09, vol: 0.06, f: 2500, f1: 900, q: 2 }); synth({ f: vary(1400), f1: 700, dur: 0.05, vol: 0.02, type: 'triangle' }); },
-    fire: () => { hiss({ dur: 0.18, vol: 0.07, f: 600, f1: 2000, type: 'lowpass', q: 2 }); synth({ f: vary(220), f1: 140, dur: 0.12, vol: 0.03, type: 'sawtooth', cut: 900 }); },
-    shell: () => { synth({ f: vary(130), f1: 60, dur: 0.14, vol: 0.12, type: 'sine' }); hiss({ dur: 0.05, vol: 0.06, f: 1500 }); },
-    chain: () => { synth({ f: vary(1800), f1: 300, dur: 0.1, vol: 0.04, type: 'sawtooth', cut: 6000, vib: 0.4, vibRate: 55 }); hiss({ dur: 0.06, vol: 0.04, f: 6000, type: 'highpass' }); },
-    orb: () => synth({ f: vary(500), f1: 900, dur: 0.12, vol: 0.06, type: 'sine', wet: 0.3 }),
-    poison: () => { synth({ f: vary(300), f1: 700, dur: 0.08, vol: 0.05, type: 'sine' }); synth({ f: vary(420), f1: 900, dur: 0.07, vol: 0.04, type: 'sine', delay: 0.05 }); },
-    frost: () => { synth({ f: vary(2400), dur: 0.2, vol: 0.035, type: 'sine', wet: 0.4 }); synth({ f: vary(3600), dur: 0.12, vol: 0.02, type: 'sine', delay: 0.03 }); },
-    royal: () => { synth({ f: vary(1047), dur: 0.25, vol: 0.05, type: 'triangle', wet: 0.4 }); synth({ f: vary(1568), dur: 0.2, vol: 0.035, type: 'triangle', delay: 0.04, wet: 0.4 }); },
+    // card / pair towers: a springy card flick
+    arrow: () => { synth({ f: vary(1250, 0.08), f1: 520, dur: 0.07, vol: 0.13, type: 'triangle', cut: 5000 }); hiss({ dur: 0.11, vol: 0.13, f: vary(3800, 0.1), f1: 1400, q: 1.4 }); synth({ f: vary(190, 0.06), f1: 120, dur: 0.06, vol: 0.09, type: 'sine' }); },
+    // lightning: crackling electric zap
+    chain: () => {
+      for (let i = 0; i < 4; i++) synth({ f: vary(900 + i * 500, 0.25), f1: 180, dur: 0.06, vol: 0.07, type: 'sawtooth', cut: 7000, vib: 0.6, vibRate: 70, delay: i * 0.025 });
+      hiss({ dur: 0.22, vol: 0.14, f: 5500, type: 'highpass', q: 0.7 }); synth({ f: 70, f1: 40, dur: 0.18, vol: 0.12, type: 'sine', delay: 0.02, wet: 0.3 });
+    },
+    // fireball: whoosh of flame
+    fire: () => { hiss({ dur: 0.3, vol: 0.2, f: 400, f1: 2600, type: 'lowpass', q: 3, at: 0.03, wet: 0.2 }); synth({ f: vary(160, 0.08), f1: 90, dur: 0.25, vol: 0.09, type: 'sawtooth', cut: 700, vib: 0.08, vibRate: 25 }); },
+    // heavy shell: cannon thump
+    shell: () => { synth({ f: vary(150, 0.06), f1: 48, dur: 0.22, vol: 0.28, type: 'sine' }); hiss({ dur: 0.09, vol: 0.2, f: 1800, q: 0.8 }); hiss({ dur: 0.35, vol: 0.08, f: 500, type: 'lowpass', delay: 0.03, wet: 0.5 }); },
+    // magic orb: bright "pew"
+    orb: () => { synth({ f: vary(1700, 0.06), f1: 420, dur: 0.14, vol: 0.12, type: 'square', cut: 3500 }); synth({ f: vary(2600, 0.06), f1: 900, dur: 0.1, vol: 0.06, type: 'sine', delay: 0.01, wet: 0.3 }); },
+    // poison: bubbling blorp
+    poison: () => { synth({ f: vary(260, 0.1), f1: 760, dur: 0.1, vol: 0.13, type: 'sine' }); synth({ f: vary(380, 0.1), f1: 980, dur: 0.09, vol: 0.1, type: 'sine', delay: 0.06 }); hiss({ dur: 0.12, vol: 0.06, f: 900, q: 5 }); },
+    // frost: icy chime and a cold breath
+    frost: () => { synth({ f: vary(2637, 0.03), dur: 0.35, vol: 0.07, type: 'sine', wet: 0.6 }); synth({ f: vary(3951, 0.03), dur: 0.25, vol: 0.05, type: 'sine', delay: 0.03, wet: 0.6 }); hiss({ dur: 0.25, vol: 0.12, f: 6000, f1: 2500, type: 'bandpass', q: 2, at: 0.03 }); },
+    // bash: a big wind-up swing
+    bash: () => { hiss({ dur: 0.2, vol: 0.16, f: 500, f1: 1800, q: 2, at: 0.06 }); synth({ f: vary(120, 0.06), f1: 70, dur: 0.15, vol: 0.14, type: 'triangle', delay: 0.05 }); },
+    // royal: a gilded fanfare chime
+    royal: () => { [1047, 1319, 1568].forEach((f, i) => synth({ f: vary(f, 0.01), dur: 0.3, vol: 0.07, type: 'triangle', delay: i * 0.03, wet: 0.5 })); hiss({ dur: 0.15, vol: 0.1, f: 4200, f1: 1800, q: 1.5 }); },
     mortar: () => { synth({ f: vary(90), f1: 40, dur: 0.3, vol: 0.18, type: 'sine' }); hiss({ dur: 0.15, vol: 0.1, f: 400, type: 'lowpass' }); },
-    bash: () => { synth({ f: vary(320), f1: 200, dur: 0.1, vol: 0.06, type: 'square', cut: 1500 }); hiss({ dur: 0.04, vol: 0.06, f: 3000 }); },
+  };
+  const IMPACTS = {
+    arrow: () => { hiss({ dur: 0.05, vol: 0.12, f: vary(1500, 0.15), q: 1.2 }); synth({ f: vary(220, 0.1), f1: 110, dur: 0.06, vol: 0.12, type: 'sine' }); },
+    fire: () => { hiss({ dur: 0.35, vol: 0.18, f: 1800, f1: 300, type: 'lowpass', q: 1.5 }); synth({ f: 110, f1: 50, dur: 0.18, vol: 0.14, type: 'sine' }); hiss({ dur: 0.4, vol: 0.05, f: 7000, type: 'highpass', delay: 0.05 }); },
+    shell: () => { synth({ f: 120, f1: 35, dur: 0.35, vol: 0.3, type: 'sine' }); hiss({ dur: 0.3, vol: 0.2, f: 1400, f1: 200, type: 'lowpass', wet: 0.35 }); },
+    orb: () => { synth({ f: vary(1900, 0.08), f1: 2900, dur: 0.08, vol: 0.08, type: 'sine' }); hiss({ dur: 0.06, vol: 0.07, f: 5000 }); },
+    poison: () => { hiss({ dur: 0.18, vol: 0.14, f: 700, f1: 250, type: 'lowpass', q: 5 }); synth({ f: vary(180, 0.1), f1: 80, dur: 0.12, vol: 0.1, type: 'sine', vib: 0.2, vibRate: 30 }); },
+    frost: () => { for (let i = 0; i < 4; i++) hiss({ dur: 0.05, vol: 0.09, f: vary(6500, 0.2), q: 4, delay: i * 0.03 }); synth({ f: vary(1760, 0.05), dur: 0.2, vol: 0.05, type: 'sine', wet: 0.5 }); },
+    bash: () => { [523, 761, 1117].forEach(f => synth({ f: vary(f, 0.02), dur: 0.4, vol: 0.06, type: 'sine', wet: 0.35 })); synth({ f: 140, f1: 55, dur: 0.2, vol: 0.22, type: 'sine' }); hiss({ dur: 0.07, vol: 0.18, f: 2500, q: 0.8 }); },
+    royal: () => { synth({ f: vary(2093, 0.02), dur: 0.25, vol: 0.08, type: 'triangle', wet: 0.4 }); hiss({ dur: 0.05, vol: 0.1, f: 3000 }); synth({ f: 200, f1: 100, dur: 0.08, vol: 0.12, type: 'sine' }); },
   };
 
   const sfx = {
@@ -186,7 +226,9 @@ PTD.Audio = (function () {
     hand() { hiss({ dur: 0.04, vol: 0.12, f: 2500, q: 3 }); hiss({ dur: 0.04, vol: 0.1, f: 3200, q: 3, delay: 0.06 }); synth({ f: 784, dur: 0.12, vol: 0.08, type: 'triangle', delay: 0.05 }); synth({ f: 1175, dur: 0.22, vol: 0.08, type: 'triangle', delay: 0.13, wet: 0.3 }); },
     boom() { synth({ f: 120, f1: 30, dur: 0.6, vol: 0.35, type: 'sine' }); hiss({ dur: 0.6, vol: 0.3, f: 900, f1: 150, type: 'lowpass', wet: 0.4 }); hiss({ dur: 0.3, vol: 0.12, f: 3000, delay: 0.05 }); },
     tip() { synth({ f: 1500, dur: 0.08, vol: 0.05, type: 'square', cut: 4000 }); synth({ f: 2000, dur: 0.14, vol: 0.05, type: 'square', cut: 4000, delay: 0.07, wet: 0.3 }); },
-    shot(fx) { if (!throttle('shot' + fx, 70)) return; (SHOTS[fx] || SHOTS.arrow)(); },
+    // o: { vol, pan } from the UI; fx picks the weapon
+    shot(o) { o = typeof o === 'string' ? { fx: o } : (o || {}); if (!throttle('shot' + o.fx, 55) || !budget()) return; spatial(o, SHOTS[o.fx] || SHOTS.arrow); },
+    impact(o) { const f = IMPACTS[o && o.fx]; if (!f || !throttle('imp' + o.fx, 50) || !budget()) return; spatial(o, f); },
     // ---- new event sounds
     hit() { if (!throttle('hit', 45)) return; hiss({ dur: 0.05, vol: 0.07, f: vary(1800, 0.2), q: 1.5 }); synth({ f: vary(160, 0.1), f1: 90, dur: 0.07, vol: 0.06, type: 'sine' }); },
     pop(kind) {

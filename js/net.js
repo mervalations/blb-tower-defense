@@ -368,7 +368,7 @@ PTD.Net = (function () {
             const st = t.stats;
             g.shots.push({ x: t.x, y: t.y + 30, target: c, tx: c.x, ty: c.y, speed: st.speed || 900, fx: e.fx, tower: t });
           }
-          d.fx = e.fx; d.tower = { owner: t ? t.owner : -1 };
+          d.fx = e.fx; d.tower = t || { owner: -1 }; d.target = c;
           break;
         }
       }

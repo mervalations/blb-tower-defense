@@ -151,7 +151,8 @@ PTD.Art = (function () {
         if (v === 0) {
           // casino felt with a faint diamond lattice
           const lat = ((Math.abs(((wx + wy) % 512 + 512) % 512 - 256) < 6) || (Math.abs(((wx - wy) % 512 + 512) % 512 - 256) < 6)) ? 8 : 0;
-          r = 52 + n + lat; gg = 150 + n + lat * 1.5; b = 82 + n + lat;
+          const drift = Math.sin(wx * 0.0011 + Math.sin(wy * 0.0007) * 2) * Math.cos(wy * 0.0009 - wx * 0.0004);   // soft pools of light and shade
+          r = 22 + n * 0.8 + lat + drift * 8; gg = 128 + n + lat * 1.5 + drift * 20; b = 68 + n + lat + drift * 6;
         } else if (v === 1) {
           // carpet runner; gold trim where it meets the felt
           const fx = (wx - map.origin) / map.cell - cx, fy = (wy - map.origin) / map.cell - cy;
