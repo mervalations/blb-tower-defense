@@ -511,5 +511,60 @@ window.PTD = window.PTD || {};
     return { rig, anim, flash: ctx.flash, detail: ctx.detail };
   }
 
-  PTD.Looters3D = { build, SPECS };
+  // Bosses: full suited body (legs, arms, gloves, jacket, shirt, tie, cape) with a big round
+  // head carrying the boss's face picture and a crown. The renderer turns the head to the camera.
+  function buildBoss(boss) {
+    const def = { name: '__boss__' };
+    const dark = '#' + new T.Color(boss.color).multiplyScalar(0.55).getHexString();
+    const spec = { body: 'biped', top: boss.color, coat: dark, shirtV: '#ffffff', tie: '#c0392b', bottom: '#1b1b22', shoes: '#0d0d0d',
+      cape: '#6b0f1a', wide: 1.45, glove: '#f2f2f2', belt: '#d4a62a', chain: true };
+    const rig = new T.Group();
+    const ctx = { rig, spec, detail: [], flash: [], eyes: [] };
+    ctx.skinM = mat('#f0c8a0', { roughness: 0.55 });
+    const parts = biped(ctx, spec);
+    const head = ctx.head;
+    head.scale.setScalar(1.9);
+    head.position.y = 2.3;
+    part(head, sph(), ctx.skinM, [0.34, 0.34, 0.34]).castShadow = true;
+    const faceMat = new T.MeshBasicMaterial({ color: 0xffffff });
+    const face = part(head, geo('bossFace', () => new T.CircleGeometry(0.3, 40)), faceMat, [1, 1, 1], [0, 0, 0.345]);
+    face.castShadow = false;
+    part(head, tor(), metal('#d4a62a'), [0.305, 0.305, 0.25], [0, 0, 0.345]);
+    const crown = pivot(head, [0, 0.33, 0]);
+    const gold = metal('#e6b422');
+    part(crown, cyl(), gold, [0.22, 0.1, 0.22]);
+    for (let k = 0; k < 5; k++) {
+      part(crown, cone(), gold, [0.05, 0.18, 0.05], [Math.cos(k / 5 * TAU) * 0.21, 0.13, Math.sin(k / 5 * TAU) * 0.21]);
+      part(crown, sph(), glow(['#ff4d4d', '#3d8bff', '#2fa35c', '#ffffff', '#c39bff'][k], 2.2), [0.035, 0.035, 0.035], [Math.cos(k / 5 * TAU) * 0.225, 0.02, Math.sin(k / 5 * TAU) * 0.225]);
+    }
+    // golden rings on the gloves for a bit of bling
+    parts.arms.forEach(a => part(a, tor(), metal('#e6b422'), [0.05, 0.05, 0.05], [0, -0.52, 0.06], [Math.PI / 2, 0, 0]));
+    let quirk = 0, quirkT = 2;
+    const anim = (t, moving, dt, st) => {
+      st = st || {};
+      const ph = t * 6 * (st.speed || 1);
+      const sw = moving ? Math.sin(ph) : 0;
+      quirkT -= dt; if (quirkT <= 0) { quirk = 1.4; quirkT = 3 + Math.random() * 4; }
+      quirk = Math.max(0, quirk - dt);
+      const q = quirk > 0 ? Math.sin((1.4 - quirk) / 1.4 * Math.PI) : 0;
+      const taunt = !moving || q > 0 ? Math.max(q, moving ? 0 : 0.6 + Math.sin(t * 3) * 0.4) : 0;   // waiting at the door = showing off
+      parts.legs[0].rotation.x = sw * 0.7; parts.legs[1].rotation.x = -sw * 0.7;
+      parts.arms[0].rotation.x = -sw * 0.6 * (1 - taunt) - taunt * 2.6; parts.arms[0].rotation.z = -taunt * 0.6;
+      parts.arms[1].rotation.x = sw * 0.6 * (1 - taunt) - taunt * 2.6; parts.arms[1].rotation.z = taunt * 0.6;
+      rig.position.y = moving ? Math.abs(Math.sin(ph)) * 0.12 : Math.abs(Math.sin(t * 6)) * 0.05 * taunt;
+      rig.rotation.x = 0.05 - (st.hit || 0) * 0.3;
+      rig.rotation.z = moving ? Math.sin(ph * 0.5) * 0.08 : 0;
+      const sq = 1 - (st.hit || 0) * 0.1;
+      rig.scale.set(1 / Math.sqrt(sq), sq, 1 / Math.sqrt(sq));
+      crown.rotation.y += dt * (0.6 + taunt * 3);
+    };
+    const before = new Map();
+    rig.traverse(o => { if (o.isMesh) before.set(o, o.material); });
+    if (PTD.Toon) PTD.Toon.cartoonize(rig, { width: 3.5, onlyShadowCasters: false, skip: (m) => m === face });
+    const flash = [];
+    rig.traverse(o => { if (o.isMesh && o.material && o.material.emissive && before.get(o) === ctx.topM) flash.push(o.material); });
+    return { rig, anim, flash, head, faceMat, face };
+  }
+
+  PTD.Looters3D = { build, buildBoss, SPECS };
 })();

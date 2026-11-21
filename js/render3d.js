@@ -605,38 +605,14 @@ window.PTD = window.PTD || {};
       const b = PTD.BOSSES[c.bossIdx] || PTD.BOSSES[0];
       const R = c.radius;
       const root = new T.Group();
-      const rig = new T.Group(); rig.scale.setScalar(R * 1.3); root.add(rig);
-      const sph = geo('sph', () => new T.SphereGeometry(1, 22, 16));
-      const suitM = std(b.color, { roughness: 0.45, metalness: 0.15 }).clone();
-      const torso = new T.Mesh(geo('torso', () => new T.CylinderGeometry(0.55, 0.7, 1.15, 20)), suitM); torso.position.y = 0.85; torso.castShadow = true; rig.add(torso);
-      const shirt = new T.Mesh(geo('shirt', () => new T.ConeGeometry(0.28, 0.7, 3)), std('#f5f5f5')); shirt.rotation.x = Math.PI; shirt.position.set(0, 1.12, 0.52); rig.add(shirt);
-      const tie = new T.Mesh(geo('tie', () => new T.ConeGeometry(0.09, 0.4, 4)), std('#c0392b')); tie.rotation.x = Math.PI; tie.position.set(0, 1.08, 0.6); rig.add(tie);
-      const cape = new T.Mesh(geo('cape', () => new T.CylinderGeometry(0.75, 1.05, 1.5, 20, 1, true, Math.PI * 0.6, Math.PI * 0.8)), std('#5b0f14', { side: T.DoubleSide }));
-      cape.position.set(0, 0.85, -0.05); cape.rotation.y = Math.PI; rig.add(cape);
-      const feet = [];
-      for (const s of [-1, 1]) { const f = new T.Mesh(sph, std('#111111')); f.scale.set(0.2, 0.12, 0.3); f.position.set(s * 0.3, 0.12, 0.05); rig.add(f); feet.push(f); }
-      // bobble head that always turns to the camera so the face is visible
-      const headG = new T.Group(); headG.position.y = 1.95; rig.add(headG);
-      const skull = new T.Mesh(sph, std('#f0c8a0', { roughness: 0.5 })); skull.scale.setScalar(0.62); skull.castShadow = true; headG.add(skull);
-      const faceMat = new T.MeshBasicMaterial({ color: 0xffffff });
-      const face = new T.Mesh(geo('face', () => new T.CircleGeometry(0.58, 40)), faceMat); face.position.z = 0.64; headG.add(face);
-      const rim = new T.Mesh(geo('faceRim', () => new T.TorusGeometry(0.59, 0.045, 8, 40)), std('#d4a62a', { metalness: 0.9, roughness: 0.25 })); rim.position.z = 0.64; headG.add(rim);
-      const gold = std('#e0b030', { metalness: 0.95, roughness: 0.2, emissive: new T.Color('#5a3a00') });
-      const crown = new T.Group(); crown.position.y = 0.62; headG.add(crown);
-      crown.add(new T.Mesh(geo('crownBand', () => new T.CylinderGeometry(0.38, 0.4, 0.18, 20, 1, true)), gold));
-      for (let k = 0; k < 5; k++) { const sp = new T.Mesh(geo('crownSpike', () => new T.ConeGeometry(0.09, 0.3, 8)), gold); sp.position.set(Math.cos(k / 5 * TAU) * 0.37, 0.22, Math.sin(k / 5 * TAU) * 0.37); crown.add(sp); }
+      const holder = new T.Group(); holder.scale.setScalar(R * 2.0); root.add(holder);   // about 2.5x a looter's height
+      const m = PTD.Looters3D.buildBoss(b);
+      holder.add(m.rig);
       const aura = new T.Mesh(geo('aura', () => new T.RingGeometry(1.2, 1.6, 48)), new T.MeshBasicMaterial({ color: new T.Color('#ffcf40').multiplyScalar(1.5), transparent: true, opacity: 0.5, depthWrite: false, blending: T.AdditiveBlending, side: T.DoubleSide }));
-      aura.rotation.x = -Math.PI / 2; aura.position.y = 0.03; rig.add(aura);
-      const light = new T.PointLight(0xffc040, 0.8, 900, 0); light.position.set(0, 260, 220); root.add(light);
-      this.addHealthBar(root, R * 4.1, 240);
-      let flashM = suitM;
-      if (PTD.Toon) {
-        PTD.Toon.cartoonize(rig, { width: 4, skip: (m) => m === face || m === aura });
-        flashM = torso.material;
-      }
-      root.userData = { rig, flash: [flashM], feet, headG, face, faceMat, boss: b, aura, lastHp: c.hp, hitT: 0, faceReady: false,
-        anim: (t, moving) => { const ph = t * 9; feet[0].position.z = moving ? Math.sin(ph) * 0.25 : 0.05; feet[1].position.z = moving ? -Math.sin(ph) * 0.25 : 0.05;
-          rig.position.y = moving ? Math.abs(Math.sin(ph)) * R * 0.1 : 0; rig.rotation.z = moving ? Math.sin(ph) * 0.05 : 0; } };
+      aura.rotation.x = -Math.PI / 2; aura.position.y = 0.03; holder.add(aura);
+      const light = new T.PointLight(0xffc040, 0.8, 1100, 0); light.position.set(0, 420, 260); root.add(light);
+      this.addHealthBar(root, R * 8.4, 340);
+      root.userData = { rig: holder, flash: m.flash, headG: m.head, face: m.face, faceMat: m.faceMat, boss: b, aura, lastHp: c.hp, hitT: 0, faceReady: false, anim: m.anim };
       this.scene.add(root);
       return root;
     }
@@ -690,6 +666,7 @@ window.PTD = window.PTD || {};
           this.applyBossFace(ud);
           const camYaw = Math.atan2(this.camera.position.x - o.position.x, this.camera.position.z - o.position.z);
           ud.headG.rotation.y = camYaw - ud.rig.rotation.y;
+          ud.headG.rotation.z = 0;
           ud.aura.rotation.z += dt;
           ud.aura.material.opacity = 0.35 + 0.25 * Math.sin(t * 4);
         }
@@ -976,7 +953,8 @@ window.PTD = window.PTD || {};
       if (type === 'waveStart' && d.bosses && me && me.alive) {
         const s = me.lane.path[0];
         const back = { x: this.cam.x, y: this.cam.y, zoom: this.cam.zoom, yaw: this.cam.yaw, tilt: this.cam.tilt };
-        this.cine = { t: 0, dur: 3.2, back, to: { x: s.x + 300, y: s.y - 500, zoom: 0.5, yaw: this.cam.yaw, tilt: -8 } };
+        this.cine = { t: 0, dur: 6.5, back, follow: true, to: { x: s.x + 300, y: s.y - 600, zoom: 0.42, yaw: this.cam.yaw, tilt: -8 } };
+        this.bossLanded = false;
       } else if (type === 'leak' && d.player === me) { this.flash = 0.55; this.shake = Math.max(this.shake, 60); }
       else if (type === 'kill' && d.boss) { this.shake = Math.max(this.shake, 110); }
       else if (type === 'towerDestroyed' && d.tower && d.tower.owner === me.id) { this.shake = Math.max(this.shake, 120); this.flash = 0.35; }
@@ -1011,7 +989,20 @@ window.PTD = window.PTD || {};
           const orbitEnd = Object.assign({}, c.start, { yaw: c.end.yaw - 0.35, zoom: 0.065, tilt: -10 });
           Object.assign(this.view, k < 0.45 ? mix(c.start, orbitEnd, k / 0.45) : mix(orbitEnd, c.end, smooth((k - 0.45) / 0.55)));
         } else {
-          const k = c.t < 1 ? c.t : c.t > c.dur - 1 ? Math.max(0, c.dur - c.t) : 1;
+          if (c.follow) {
+            // track the boss as it steps out, and slam a shockwave down when it appears
+            const me = this.game.human;
+            const b = this.game.creeps.find(cr => cr.boss && cr.alive && cr.owner === me.id);
+            if (b) {
+              c.to.x += ((b.x + 250) - c.to.x) * Math.min(1, dt * 3); c.to.y += ((b.y - 550) - c.to.y) * Math.min(1, dt * 3);
+              if (!this.bossLanded) {
+                this.bossLanded = true; this.shake = Math.max(this.shake, 140);
+                this.game.fx.push({ kind: 'ring', x: b.x, y: b.y, t: 0, life: 0.9, color: '#ffcf40', r: 700 });
+                this.burst(W2T(b.x, b.y, 60), '#ffcf40', 30, 520, 0.7);
+              }
+            }
+          }
+          const k = c.t < 1.2 ? c.t / 1.2 : c.t > c.dur - 1.2 ? Math.max(0, (c.dur - c.t) / 1.2) : 1;
           Object.assign(this.view, mix(c.back, c.to, smooth(k)));
         }
         if (c.t >= c.dur) { if (c.intro) Object.assign(this.view, this.cam); this.cine = null; }

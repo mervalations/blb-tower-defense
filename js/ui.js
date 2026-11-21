@@ -116,7 +116,7 @@
         A.music.setMood(d.bosses ? 'boss' : 'action');
         if (d.bosses) {
           const faces = d.bosses.map(b => b.image ? '<img class="boss-face" src="' + b.image + '" alt="">' : '').join(' ');
-          const hp = Math.round(game.creepHp(d.def) * (d.def.hpEach || 1));
+          const hp = Math.round(game.creepHp(d.def) * (d.def.hpEach || 1) * (game.mode.curve ? PTD.RULES.bossHpMult : 1));
           banner(faces + '<div>' + d.bosses.map(b => esc(b.name)).join(' &amp; ') + '</div>', d.bosses[0].title + '  &middot;  ' + fmt(hp) + ' HP' + (d.bosses.length > 1 ? ' each' : '') + (d.def.final ? '  &middot;  destroys towers!' : ''), 3400, true);
           A.play('boss');
           A.clip(d.bosses[0].intro);
@@ -172,7 +172,7 @@
   function levelText(def) {
     if (!def) return 'Final tally';
     const bosses = PTD.levelBosses(def);
-    if (bosses) return 'BOSS: ' + bosses.map(i => PTD.BOSSES[i].name).join(' & ') + ' (' + fmt(Math.round(game.creepHp(def) * (def.hpEach || 1))) + ' HP' + (bosses.length > 1 ? ' each' : '') + ')';
+    if (bosses) return 'BOSS: ' + bosses.map(i => PTD.BOSSES[i].name).join(' & ') + ' (' + fmt(Math.round(game.creepHp(def) * (def.hpEach || 1) * (game.mode.curve ? PTD.RULES.bossHpMult : 1))) + ' HP' + (bosses.length > 1 ? ' each' : '') + ')';
     const tags = [];
     if (def.immune) tags.push('spell immune');
     if (def.evasion) tags.push('evasive');

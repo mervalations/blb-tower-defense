@@ -12,7 +12,9 @@ PTD.RULES = {
   tipCost: 10,
   tipMax: 9,
   handBonusBase: 5,
-  anteBase: 5,             // solo modes: every hand pays each player anteBase + levels reached        // winner gets base + base * floor((round+1)/6) * modeMult
+  anteBase: 5,
+  bossHpMult: 1.8,         // solo modes: bosses keep their punch after the HP curve flattens them
+  bossSpeed: 0.85,         // bosses lumber a little slower so you can see them             // solo modes: every hand pays each player anteBase + levels reached        // winner gets base + base * floor((round+1)/6) * modeMult
   intermission: 2,
   towerFootprint: 128,
   snap: 64,

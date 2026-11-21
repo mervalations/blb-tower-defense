@@ -6,8 +6,8 @@
 window.PTD = window.PTD || {};
 
 PTD.BOSSES = [
-  { name: 'Adam', title: 'Level 6 Boss', image: 'assets/bosses/adam.jpg', color: '#b03a2e', intro: 'who-wants-back-shots', defeat: 'back-shots' },
-  { name: 'Fuller', title: 'Level 12 Boss', image: 'assets/bosses/fuller.jpg', color: '#1f618d', intro: 'vocodes', defeat: 'back-shots' },
+  { name: 'Adam', title: 'Level 6 Boss', image: 'assets/bosses/adam.jpg', color: '#b03a2e', intro: 'mic0038', defeat: 'back-shots' },
+  { name: 'Fuller', title: 'Level 12 Boss', image: 'assets/bosses/fuller.jpg', color: '#1f618d', intro: 'mic0035', defeat: 'back-shots' },
   { name: 'Marvin', title: 'Level 18 Boss', image: 'assets/bosses/marvin.jpg', color: '#7d3c98', intro: 'who-wants-back-shots', defeat: 'back-shots' },
   { name: 'Smooth', title: 'Level 24 Boss', image: 'assets/bosses/smooth.jpg', color: '#1b1b1b', intro: 'smooth-is', defeat: 'back-shots' },
   { name: 'Tree', title: 'Final Boss Tag Team', image: 'assets/bosses/tree.jpg', color: '#196f3d', intro: 'rocky-theme', defeat: 'back-shots' },

@@ -213,12 +213,12 @@ PTD.Game = class {
     for (const p of this.alivePlayers()) {
       if (p.folded) continue;
       const start = p.lane.path[0];
-      const hp = Math.round(this.creepHp(def) * (isBoss && def.hpEach ? def.hpEach : 1));
+      const hp = Math.round(this.creepHp(def) * (isBoss && def.hpEach ? def.hpEach : 1) * (isBoss && this.mode.curve ? PTD.RULES.bossHpMult : 1));
       this.creeps.push({
         id: this.nextId++, owner: p.id, def, level: this.level, x: start.x, y: start.y, dir: 0,
-        dist: 0, hp, maxHp: hp, speed: PTD.RULES.creepSpeed, slowT: 0, slowF: 1, stunT: 0,
+        dist: 0, hp, maxHp: hp, speed: PTD.RULES.creepSpeed * (isBoss ? PTD.RULES.bossSpeed : 1), slowT: 0, slowF: 1, stunT: 0,
         poisonT: 0, poisonDps: 0, bleed: false, alive: true,
-        boss: isBoss, bossIdx, wait: isBoss ? 2.5 : 0, atkT: 3, phaseOff: this.rng() * 6.28,
+        boss: isBoss, bossIdx, wait: isBoss ? 3 : 0, atkT: 3, phaseOff: this.rng() * 6.28,
         radius: isBoss ? 85 : 42,
       });
     }

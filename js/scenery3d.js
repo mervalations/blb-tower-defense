@@ -152,6 +152,132 @@ window.PTD = window.PTD || {};
       S.add(curb);
     }
 
+    // ------------------------------------------------------------ giant flat props lying on the felt
+    // (decals only: towers can still be built right on top of them)
+    {
+      const open = [];
+      for (let i = 0; i < 4000 && open.length < 26; i++) {
+        const x = rr(-5400, 5400), y = rr(-5400, 5400);
+        if (Math.abs(x) < 900 && Math.abs(y) < 900) continue;
+        let ok = true;
+        for (let dx = -260; dx <= 260 && ok; dx += 130) for (let dy = -260; dy <= 260 && ok; dy += 130) if (map.cellAt(x + dx, y + dy) !== 0) ok = false;
+        if (ok && open.every(o => Math.hypot(o[0] - x, o[1] - y) > 1100)) open.push([x, y]);
+      }
+      const decal = (tex, w, h, x, y, rot, op) => {
+        const m = new T.Mesh(new T.PlaneGeometry(w, h).rotateX(-Math.PI / 2), new T.MeshStandardMaterial({ map: tex, color: '#8a8780', transparent: true, opacity: (op || 0.9) * 0.85, depthWrite: false, roughness: 0.8, envMapIntensity: 0.1, polygonOffset: true, polygonOffsetFactor: -2 }));
+        m.position.copy(W2T(x, y, FELT_H + 0.6)); m.rotation.y = rot; m.receiveShadow = true; S.add(m);
+      };
+      const bigCard = (suit, rank) => {
+        const src = PTD.Art.cardSprite(suit, rank);
+        return canvasTex(216, 280, (x) => { x.drawImage(src, 10, 6, 108, 140, 0, 0, 216, 280); });
+      };
+      const chipTex = (col) => canvasTex(256, 256, (x) => {
+        x.fillStyle = col; x.beginPath(); x.arc(128, 128, 124, 0, TAU); x.fill();
+        x.strokeStyle = '#f4efe2'; x.lineWidth = 22; x.setLineDash([34, 30]); x.beginPath(); x.arc(128, 128, 104, 0, TAU); x.stroke(); x.setLineDash([]);
+        x.fillStyle = 'rgba(255,255,255,0.25)'; x.beginPath(); x.arc(128, 128, 70, 0, TAU); x.fill();
+        x.fillStyle = '#f4efe2'; x.font = 'bold 64px Georgia, serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('BLB', 128, 132);
+      });
+      const diceTex = (n) => canvasTex(256, 256, (x) => {
+        x.fillStyle = '#fafafa'; PTD.Art.rr(x, 8, 8, 240, 240, 40); x.fill();
+        x.strokeStyle = 'rgba(0,0,0,0.25)'; x.lineWidth = 8; x.stroke();
+        const pip = { 1: [[128, 128]], 3: [[70, 70], [128, 128], [186, 186]], 5: [[70, 70], [186, 70], [128, 128], [70, 186], [186, 186]], 6: [[70, 64], [186, 64], [70, 128], [186, 128], [70, 192], [186, 192]] }[n];
+        x.fillStyle = n === 1 ? '#c0392b' : '#111'; pip.forEach(([a, b]) => { x.beginPath(); x.arc(a, b, 22, 0, TAU); x.fill(); });
+      });
+      const chipCols = ['#c0392b', '#1f618d', '#1e8449', '#7d3c98', '#111111'];
+      open.forEach(([x, y], i) => {
+        const k = i % 4, rot = rr(0, TAU);
+        if (k === 0) decal(bigCard(i % 4, 14 - (i % 5)), 360, 470, x, y, rot, 0.92);
+        else if (k === 1) decal(chipTex(chipCols[i % chipCols.length]), 420, 420, x, y, rot, 0.85);
+        else if (k === 2) { decal(diceTex([1, 3, 5, 6][i % 4]), 240, 240, x - 140, y, rot, 0.95); decal(diceTex([6, 5, 3, 1][i % 4]), 240, 240, x + 150, y + 60, rot + 0.5, 0.95); }
+        else { for (let c = 0; c < 3; c++) decal(bigCard((i + c) % 4, 10 + c), 300, 390, x + c * 90 - 90, y + c * 20, rot + (c - 1) * 0.25, 0.9); }
+      });
+    }
+
+    // ------------------------------------------------------------ coloured spotlights sweeping the table
+    {
+      const pools = [];
+      const poolTex = canvasTex(128, 128, (x) => {
+        const gr = x.createRadialGradient(64, 64, 0, 64, 64, 64);
+        gr.addColorStop(0, 'rgba(255,255,255,0.9)'); gr.addColorStop(0.55, 'rgba(255,255,255,0.35)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+        x.fillStyle = gr; x.fillRect(0, 0, 128, 128);
+      });
+      ['#ff4fa0', '#4fd2ff', '#ffd34d', '#9b6bff'].forEach((c, i) => {
+        const pool = new T.Mesh(new T.PlaneGeometry(1500, 1500).rotateX(-Math.PI / 2), new T.MeshBasicMaterial({ map: poolTex, color: new T.Color(c).multiplyScalar(0.32), transparent: true, depthWrite: false, blending: T.AdditiveBlending }));
+        pool.position.y = FELT_H + 3; S.add(pool);
+        const beam = new T.Mesh(new T.ConeGeometry(620, 4200, 24, 1, true), new T.MeshBasicMaterial({ color: new T.Color(c).multiplyScalar(0.03), transparent: true, depthWrite: false, blending: T.AdditiveBlending, side: T.DoubleSide, fog: false }));
+        S.add(beam);
+        pools.push({ pool, beam, ph: i * 1.7, r: 2600 + i * 700, sp: 0.07 + i * 0.02 });
+      });
+      updaters.push((t) => {
+        for (const p of pools) {
+          const a = t * p.sp + p.ph, x = Math.cos(a) * p.r, z = Math.sin(a * 1.3) * p.r;
+          p.pool.position.x = x; p.pool.position.z = z;
+          p.beam.position.set(x, FELT_H + 2100, z);
+        }
+      });
+    }
+
+    // ------------------------------------------------------------ landmarks on the biggest wall blocks
+    {
+      const big = r.rectsOf(2).map(w => {
+        const W = (w.x1 - w.x0) * cell, H = (w.y1 - w.y0) * cell;
+        const cx = map.origin + w.x0 * cell + W / 2, cy = map.origin + w.y0 * cell + H / 2;
+        const edge = w.x0 === 0 || w.y0 === 0 || w.x1 === map.size || w.y1 === map.size;
+        return { W, H, cx, cy, edge, area: W * H };
+      }).filter(w => !w.edge && !(Math.abs(w.cx) < 700 && Math.abs(w.cy) < 700) && Math.min(w.W, w.H) >= 300).sort((a, b) => b.area - a.area);
+      const top = WALL_H + 4;
+      const gold = std('#e6b422', { metalness: 0.95, roughness: 0.2 });
+      const kinds = ['champagne', 'chips', 'dice', 'slot', 'roulette', 'chips', 'dice', 'champagne'];
+      big.slice(0, 16).forEach((w, i) => {
+        const g2 = new T.Group(); g2.position.copy(W2T(w.cx, w.cy, top)); g2.rotation.y = rr(0, TAU); S.add(g2);
+        const k = kinds[i % kinds.length];
+        if (k === 'champagne') {
+          const glass = M('champ', () => new T.MeshPhysicalMaterial({ color: '#fff6d8', roughness: 0.05, transparent: true, opacity: 0.45, clearcoat: 1 }));
+          const fizz = glow('#ffe7a0', 1.2);
+          for (let lvl = 0; lvl < 4; lvl++) {
+            const n = 4 - lvl;
+            for (let a = 0; a < n; a++) for (let b = 0; b < n; b++) {
+              const gl = new T.Mesh(new T.CylinderGeometry(26, 8, 50, 12, 1, true), glass);
+              gl.position.set((a - (n - 1) / 2) * 56, 30 + lvl * 62, (b - (n - 1) / 2) * 56); g2.add(gl);
+              const wine = new T.Mesh(new T.CylinderGeometry(22, 9, 30, 12), fizz); wine.position.copy(gl.position).y -= 6; g2.add(wine);
+            }
+          }
+        } else if (k === 'chips') {
+          const cols = ['#c0392b', '#1f618d', '#1e8449', '#111111', '#7d3c98'];
+          for (let st = 0; st < 5; st++) {
+            const h = 6 + Math.floor(rnd() * 14), ox = Math.cos(st / 5 * TAU) * 70, oz = Math.sin(st / 5 * TAU) * 70;
+            for (let c = 0; c < h; c++) { const ch = new T.Mesh(new T.CylinderGeometry(46, 46, 12, 24), std(cols[st])); ch.position.set(ox + rr(-2, 2), 6 + c * 12.5, oz + rr(-2, 2)); ch.castShadow = true; g2.add(ch); }
+          }
+        } else if (k === 'dice') {
+          for (let d2 = 0; d2 < 2; d2++) {
+            const die = new T.Mesh(new T.BoxGeometry(150, 150, 150), std(d2 ? '#c0392b' : '#fafafa', { roughness: 0.2 }));
+            die.position.set(d2 * 190 - 95, 75, d2 * 40); die.rotation.set(0, d2 * 0.7, 0); die.castShadow = true; g2.add(die);
+            for (let q = 0; q < 5; q++) { const pip = new T.Mesh(new T.SphereGeometry(14, 8, 6), std(d2 ? '#ffffff' : '#111111')); pip.position.set(d2 * 190 - 95 + [-40, 40, 0, -40, 40][q], 151, d2 * 40 + [-40, -40, 0, 40, 40][q]); g2.add(pip); }
+          }
+          updaters.push((t) => { g2.children[0].rotation.y = Math.sin(t * 0.7 + i) * 0.1; });
+        } else if (k === 'slot') {
+          const cab = new T.Mesh(new T.BoxGeometry(220, 380, 160), std('#7a1020', { roughness: 0.3, metalness: 0.3 })); cab.position.y = 190; cab.castShadow = true; g2.add(cab);
+          const topper = new T.Mesh(new T.CylinderGeometry(110, 110, 160, 24, 1, false, 0, Math.PI), gold); topper.rotation.z = Math.PI / 2; topper.rotation.y = Math.PI / 2; topper.position.y = 380; g2.add(topper);
+          const reels = [];
+          const sym = canvasTex(64, 256, (x) => { const s2 = ['7', '♠', 'BAR', '♥', '$']; s2.forEach((c, k2) => { x.fillStyle = k2 % 2 ? '#fff8e0' : '#fff'; x.fillRect(0, k2 * 51, 64, 51); x.fillStyle = ['#c0392b', '#111', '#1f618d', '#c0392b', '#1e8449'][k2]; x.font = 'bold ' + (c.length > 1 ? 18 : 34) + 'px Georgia'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(c, 32, k2 * 51 + 26); }); });
+          sym.wrapT = T.RepeatWrapping;
+          for (let k2 = 0; k2 < 3; k2++) {
+            const reel = new T.Mesh(new T.CylinderGeometry(34, 34, 52, 20), new T.MeshBasicMaterial({ map: sym }));
+            reel.rotation.z = Math.PI / 2; reel.position.set((k2 - 1) * 58, 250, 70); g2.add(reel); reels.push(reel);
+          }
+          const lever = new T.Mesh(new T.CylinderGeometry(6, 6, 150, 8), gold); lever.position.set(128, 260, 0); g2.add(lever);
+          const knob = new T.Mesh(new T.SphereGeometry(18, 12, 8), std('#c0392b', { roughness: 0.2 })); knob.position.set(128, 340, 0); g2.add(knob);
+          updaters.push((t, dt) => { reels.forEach((rl, k2) => { rl.rotation.x += dt * (6 + k2 * 2) * (Math.sin(t * 0.5 + i) > 0 ? 1 : 0.05); }); });
+        } else if (k === 'roulette') {
+          const bowl = new T.Mesh(new T.CylinderGeometry(230, 250, 40, 37), std('#4a2414', { roughness: 0.3 })); bowl.position.y = 20; g2.add(bowl);
+          const disk = new T.Mesh(new T.CylinderGeometry(200, 200, 44, 37), M('roulette2', () => new T.MeshStandardMaterial({ map: canvasTex(256, 256, (x) => { for (let n = 0; n < 37; n++) { x.fillStyle = n === 0 ? '#1e8449' : n % 2 ? '#c0392b' : '#111111'; x.beginPath(); x.moveTo(128, 128); x.arc(128, 128, 128, n / 37 * TAU, (n + 1) / 37 * TAU); x.fill(); } }), roughness: 0.3 })));
+          disk.position.y = 24; g2.add(disk);
+          const ball = new T.Mesh(new T.SphereGeometry(12, 10, 8), std('#ffffff', { roughness: 0.1 })); g2.add(ball);
+          updaters.push((t, dt) => { disk.rotation.y += dt * 1.2; ball.position.set(Math.cos(-t * 3) * 175, 50, Math.sin(-t * 3) * 175); });
+        }
+      });
+    }
+
     // ------------------------------------------------------------ marquee bulbs on the rim
     {
       const pts = [];
@@ -392,6 +518,19 @@ window.PTD = window.PTD || {};
       ctx.font = Math.round(R * 0.22) + 'px Georgia, serif';
       ['♠', '♥', '♦', '♣'].forEach((s, i) => { const a = i / 4 * TAU - Math.PI / 4; ctx.fillText(s, x + Math.cos(a) * R * 0.91, y + Math.sin(a) * R * 0.91); });
     };
+    // quilted felt: diamond stitching across the whole table
+    ctx.strokeStyle = 'rgba(0,0,0,0.16)'; ctx.lineWidth = Math.max(1, 10 / upp);
+    const q = 420 / upp;
+    for (let k = -px; k < px * 2; k += q) {
+      ctx.beginPath(); ctx.moveTo(k, 0); ctx.lineTo(k + px, px); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(k, 0); ctx.lineTo(k - px, px); ctx.stroke();
+    }
+    ctx.strokeStyle = 'rgba(255,240,200,0.08)'; ctx.lineWidth = Math.max(1, 4 / upp); ctx.setLineDash([8 / upp, 10 / upp]);
+    for (let k = -px; k < px * 2; k += q) {
+      ctx.beginPath(); ctx.moveTo(k + 14 / upp, 0); ctx.lineTo(k + px + 14 / upp, px); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(k + 14 / upp, 0); ctx.lineTo(k - px + 14 / upp, px); ctx.stroke();
+    }
+    ctx.setLineDash([]);
     // big seals in the open felt between lanes on each side of the vault
     [[-2300, 2300], [2300, 2300], [2300, -2300], [-2300, -2300]].forEach(([x, y]) => seal(x, y, 700));
     // scattered suit emblems on open felt
