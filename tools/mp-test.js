@@ -1,11 +1,11 @@
 // Two-browser multiplayer test: page A hosts the public table, page B joins, both play a hand.
-// usage: node tools/mp-test.js <outdir>
+// usage: node tools/mp-test.js <outdir> [url]   (defaults to the local index.html)
 const { spawn } = require('child_process');
 const fs = require('fs'), path = require('path');
 const CHROME = 'C:/Program Files/Google/Chrome/Application/chrome.exe';
 const out = path.resolve(process.argv[2] || 'shots');
 fs.mkdirSync(out, { recursive: true });
-const url = 'file:///' + path.resolve(__dirname, '..', 'index.html').split(path.sep).join('/');
+const url = process.argv[3] || 'file:///' + path.resolve(__dirname, '..', 'index.html').split(path.sep).join('/');
 const chrome = spawn(CHROME, ['--headless=new', '--remote-debugging-port=9334', '--user-data-dir=' + path.join(out, 'mp-profile'), 'about:blank']);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
