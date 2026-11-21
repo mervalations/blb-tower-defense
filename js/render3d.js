@@ -615,9 +615,8 @@ window.PTD = window.PTD || {};
       const holder = new T.Group(); holder.scale.setScalar(R * 2.0); root.add(holder);   // about 2.5x a looter's height
       const m = PTD.Looters3D.buildBoss(b);
       holder.add(m.rig);
-      const aura = new T.Mesh(geo('aura', () => new T.RingGeometry(1.2, 1.6, 48)), new T.MeshBasicMaterial({ color: new T.Color('#ffcf40').multiplyScalar(1.5), transparent: true, opacity: 0.5, depthWrite: false, blending: T.AdditiveBlending, side: T.DoubleSide }));
+      const aura = new T.Mesh(geo('aura', () => new T.RingGeometry(1.2, 1.6, 48)), new T.MeshBasicMaterial({ color: new T.Color('#ffcf40').multiplyScalar(0.8), transparent: true, opacity: 0.35, depthWrite: false, blending: T.AdditiveBlending, side: T.DoubleSide }));
       aura.rotation.x = -Math.PI / 2; aura.position.y = 0.03; holder.add(aura);
-      const light = new T.PointLight(0xffc040, 0.8, 1100, 0); light.position.set(0, 420, 260); root.add(light);
       this.addHealthBar(root, R * 8.4, 340);
       root.userData = { rig: holder, flash: m.flash, headG: m.head, face: m.face, faceMat: m.faceMat, boss: b, aura, lastHp: c.hp, hitT: 0, faceReady: false, anim: m.anim };
       this.scene.add(root);
@@ -683,7 +682,17 @@ window.PTD = window.PTD || {};
         if (c.hp < ud.lastHp - 0.5) ud.hitT = 0.12;
         ud.lastHp = c.hp;
         ud.hitT = Math.max(0, ud.hitT - dt);
-        ud.anim(t + c.phaseOff, moving, dt, { speed: c.slowF || 1, hit: ud.hitT / 0.12, stun: c.stunT > 0, slow: c.slowF < 1 });
+        let intro = null;
+        if (c.boss && c.wait > 0) {
+          ud.introT = (ud.introT || 0) + dt; intro = ud.introT;
+          if (!ud.slammed && intro >= 2.25) {   // ground-pound shockwave
+            ud.slammed = true; this.shake = Math.max(this.shake, 170);
+            this.game.fx.push({ kind: 'ring', x: c.x, y: c.y, t: 0, life: 0.8, color: '#ffffff', r: 900 });
+            this.burst(W2T(c.x, c.y, 30), '#d9c3a0', 26, 420, 0.8);
+          }
+          if (!ud.flexed && intro >= 2.4) { ud.flexed = true; this.burst(o.position.clone().setY(c.radius * 5), '#ffe066', 22, 300, 0.9); }
+        }
+        ud.anim(t + c.phaseOff, moving, dt, { speed: c.slowF || 1, hit: ud.hitT / 0.12, stun: c.stunT > 0, slow: c.slowF < 1, intro });
         // little dust puffs at their feet, and the odd gold glint from the loot
         ud.fxT = (ud.fxT || Math.random() * 0.4) - dt;
         if (moving && ud.fxT <= 0 && this.particles.length < 700 && this.view.zoom > 0.08) {

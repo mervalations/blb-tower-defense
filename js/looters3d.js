@@ -18,6 +18,8 @@ window.PTD = window.PTD || {};
   const box = () => geo('b', () => new T.BoxGeometry(1, 1, 1));
   const tor = () => geo('t', () => new T.TorusGeometry(1, 0.18, 8, 24));
   const disc = () => geo('d', () => new T.CylinderGeometry(1, 1, 0.12, 20));
+  const OCTA = () => geo('oc', () => new T.OctahedronGeometry(1, 0));
+  const wood = (c) => mat(c, { roughness: 0.6 });
 
   const M = {};
   function mat(color, opts) {
@@ -117,6 +119,7 @@ window.PTD = window.PTD || {};
     part(head, sph(), gloss(o.nose || '#f08aa0'), [0.055, 0.05, 0.05], [0, -0.05, 0.49]);
     for (const s of [-1, 1]) {
       const ear = pivot(head, [s * 0.2, 0.25, -0.02]);
+      ctx.ears.push(ear);
       part(ear, disc(), ctx.furM, [o.ear || 0.19, 1, o.ear || 0.19], [0, 0, 0], [Math.PI / 2, 0, s * 0.3]);
       part(ear, disc(), skin(o.inner || '#f4a6b8'), [(o.ear || 0.19) * 0.65, 0.8, (o.ear || 0.19) * 0.65], [0, 0, 0.012], [Math.PI / 2, 0, s * 0.3]);
       for (let w = 0; w < 3; w++) ctx.detail.push(part(head, cyl(), mat('#eeeeee'), [0.004, 0.3, 0.004], [s * 0.16, -0.06 + w * 0.03, 0.4], [0, 0, s * (1.35 + w * 0.15)]));
@@ -131,7 +134,7 @@ window.PTD = window.PTD || {};
     part(head, sph(), mat(o.muzzle || '#f1e6d6'), [0.13, 0.08, 0.14], [0, -0.13, 0.32]);
     part(head, sph(), gloss('#151515'), [0.055, 0.045, 0.05], [0, -0.04, 0.49]);
     for (const s of [-1, 1]) {
-      part(head, cone(), ctx.furM, [0.1, 0.24, 0.06], [s * 0.17, 0.32, -0.02], [0, 0, -s * 0.25]);
+      ctx.ears.push(part(head, cone(), ctx.furM, [0.1, 0.24, 0.06], [s * 0.17, 0.32, -0.02], [0, 0, -s * 0.25]));
       part(head, cone(), skin(o.inner || '#e8b7a0'), [0.055, 0.16, 0.03], [s * 0.17, 0.3, 0.015], [0, 0, -s * 0.25]);
     }
     eyes(ctx, head, { y: 0.08, z: 0.22, sp: 0.12, size: 0.08, iris: o.iris || '#7a4a12', brow: o.brow || '#3b2a1a', angry: true });
@@ -414,7 +417,7 @@ window.PTD = window.PTD || {};
   function build(def) {
     const spec = SPECS[def.name] || { body: 'biped', head: 'human', skin: '#e0ac8a', top: (def.look || ['#888'])[0] };
     const rig = new T.Group();
-    const ctx = { rig, spec, detail: [], flash: [], eyes: [] };
+    const ctx = { rig, spec, detail: [], flash: [], eyes: [], ears: [] };
     const base = spec.fur || spec.skin || spec.shell || '#e0ac8a';
     ctx.skinM = skin(base).clone(); ctx.flash.push(ctx.skinM);
     ctx.furM = mat(spec.fur || base, { roughness: 0.95 }).clone(); ctx.flash.push(ctx.furM);
@@ -449,7 +452,22 @@ window.PTD = window.PTD || {};
     const gait = GAIT[spec.robe ? 'glide' : gaitName];
     const armHold = spec.body === 'biped' ? -2.5 : 0;   // left arm reaches back over the shoulder to hold the sack
     const eyeY = ctx.eyes.map(e => e.scale.y);
-    let quirk = 0, quirkT = 2 + Math.random() * 5, blinkT = 1 + Math.random() * 3, stars = null;
+    const earZ = ctx.ears.map(e => e.rotation.z);
+    const sackY = ctx.sackG ? ctx.sackG.position.y : 0;
+    // every looter also gets one random extra party trick
+    const small = gaitName === 'scurry' || gaitName === 'sneak';
+    const extras = small ? ['dance', 'juggle', 'trip', 'cartwheel'] : ['dance', 'juggle', 'trip', 'count'];
+    const extra = extras[Math.floor(Math.random() * extras.length)];
+    let quirk = 0, quirkDur = 1.2, active = quirkName, quirkT = 2 + Math.random() * 5, blinkT = 1 + Math.random() * 3, stars = null, coins = null;
+    function juggleCoins(on, t) {
+      if (on && !coins) {
+        coins = new T.Group(); coins.position.set(0.25, 2.75, 0.25);
+        for (let k = 0; k < 3; k++) coins.add(new T.Mesh(cyl(), metal('#ffcf40')));
+        coins.children.forEach(c => c.scale.set(0.09, 0.02, 0.09));
+        rig.add(coins);
+      }
+      if (coins) { coins.visible = on; if (on) coins.children.forEach((c, k) => { const a = t * 9 + k * TAU / 3; c.position.set(Math.cos(a) * 0.22, Math.abs(Math.sin(a)) * 0.45, 0); c.rotation.x = t * 15; }); }
+    }
 
     function setStars(on, t) {
       if (on && !stars) {
@@ -469,9 +487,14 @@ window.PTD = window.PTD || {};
       const sw = moving ? (gait.snap ? Math.sign(Math.sin(ph)) * Math.min(1, Math.abs(Math.sin(ph)) * 3) : Math.sin(ph)) : 0;
       // quirks fire every few seconds and play for ~1.2s
       quirkT -= dt;
-      if (quirkT <= 0) { quirk = 1.2; quirkT = 4 + Math.random() * 6; }
+      if (quirkT <= 0 && !st.stun) {
+        active = Math.random() < 0.5 ? quirkName : extra;
+        quirkDur = active === quirkName ? 1.2 : 1.8;
+        quirk = quirkDur; quirkT = 3.5 + Math.random() * 5;
+      }
       quirk = Math.max(0, quirk - dt);
-      const q = quirk > 0 ? Math.sin((1.2 - quirk) / 1.2 * Math.PI) : 0;   // 0 -> 1 -> 0 envelope
+      const prog = quirk > 0 ? (quirkDur - quirk) / quirkDur : 0;            // 0 -> 1 through the trick
+      const q = quirk > 0 ? Math.sin(prog * Math.PI) : 0;                     // 0 -> 1 -> 0 envelope
 
       if (parts.legs) {
         const legAmp = gait.step * (st.stun ? 0 : 1);
@@ -486,7 +509,18 @@ window.PTD = window.PTD || {};
         const squash = 1 - (st.hit || 0) * 0.12 + (moving ? Math.abs(Math.sin(ph)) * 0.03 : 0);
         rig.scale.set(1 / Math.sqrt(squash), squash, 1 / Math.sqrt(squash));
         if (ctx.head) { ctx.head.rotation.z = sw * 0.06; ctx.head.rotation.y = 0; ctx.head.rotation.x = 0; }
-        switch (quirkName) {
+        switch (active) {
+          case 'dance': rig.rotation.y = prog * TAU * 2 * (q > 0 ? 1 : 0); parts.arms[0].rotation.x = armHold * (1 - q) - q * 2.8; rArmZ = Math.sin(t * 16) * 0.5 * q;
+            parts.legs[0].rotation.x += Math.sin(t * 20) * 0.6 * q; parts.legs[1].rotation.x -= Math.sin(t * 20) * 0.6 * q; rig.position.y += Math.abs(Math.sin(t * 20)) * 0.12 * q; break;
+          case 'juggle': rArm = -2.0 * q + rArm * (1 - q); rArmZ = Math.sin(t * 18) * 0.25 * q; if (ctx.head) ctx.head.rotation.x = -0.4 * q; break;
+          case 'trip': rig.rotation.x += Math.min(1, prog * 3) * (1 - Math.max(0, prog - 0.6) / 0.4) * 1.25; rig.position.y -= q * 0.35; rArm = -1.6 * q; break;
+          case 'count': if (ctx.head) ctx.head.rotation.x = 0.45 * q; rArm = -1.5 * q + rArm * (1 - q); rArmZ = Math.sin(t * 24) * 0.12 * q; break;
+          case 'cartwheel': rig.rotation.z = prog * TAU * (q > 0 ? 1 : 0); rig.position.y += q * 0.5; break;
+          default: if (active !== 'dance') rig.rotation.y = 0;
+        }
+        juggleCoins(active === 'juggle' && q > 0.05, t);
+        if (active !== 'dance') rig.rotation.y = 0;
+        switch (active) {
           case 'look': if (ctx.head) ctx.head.rotation.y = q * (quirkT % 2 > 1 ? 1.3 : -1.3); break;
           case 'laugh': if (ctx.head) ctx.head.rotation.x = -q * 0.5; rig.position.y += Math.abs(Math.sin(t * 22)) * 0.05 * q; break;
           case 'hop': rig.position.y += q * 0.35; break;
@@ -498,7 +532,11 @@ window.PTD = window.PTD || {};
           case 'twirl': if (ctx.propG) ctx.propG.rotation.y = q > 0 ? t * 14 : 0; rArm = -1.0 * q + rArm * (1 - q); break;
         }
         parts.arms[1].rotation.x = rArm; parts.arms[1].rotation.z = -rArmZ;
-        if (ctx.sackG) ctx.sackG.rotation.z = sw * 0.18;
+        // secondary motion: the head lags the bounce, ears flop, the sack bounces
+        if (ctx.head && moving) ctx.head.rotation.x += Math.cos(ph) * 0.09;
+        ctx.ears.forEach((e, i) => { e.rotation.z = earZ[i] + (moving ? Math.sin(ph + 1.2) * 0.3 : Math.sin(t * 3 + i) * 0.08) * (i % 2 ? -1 : 1); });
+        if (ctx.sackG) { ctx.sackG.rotation.z = sw * 0.18; ctx.sackG.position.y = sackY + (moving ? Math.abs(Math.sin(ph + 0.8)) * 0.07 : 0); ctx.sackG.rotation.x = moving ? Math.sin(ph) * 0.12 : 0; }
+        if ((st.hit || 0) > 0.5) rig.rotation.z += (Math.random() - 0.5) * 0.25;   // stumble
         if (st.stun && ctx.head) ctx.head.rotation.y = t * 9;
         if (st.slow) rig.position.x = (Math.random() - 0.5) * 0.025;            // shivering
         else rig.position.x = 0;
@@ -525,7 +563,8 @@ window.PTD = window.PTD || {};
       blinkT -= dt;
       const shut = blinkT < 0.12;
       if (blinkT <= 0) blinkT = 2 + Math.random() * 4;
-      ctx.eyes.forEach((e, i) => { e.scale.y = shut ? eyeY[i] * 0.12 : eyeY[i]; });
+      const startled = (st.hit || 0) > 0.2 ? 1.4 : 1;                              // eyes pop when hit
+      ctx.eyes.forEach((e, i) => { e.scale.y = shut && startled === 1 ? eyeY[i] * 0.12 : eyeY[i] * startled; });
       setStars(!!st.stun, t);
     }
 
@@ -541,59 +580,170 @@ window.PTD = window.PTD || {};
     return { rig, anim, flash: ctx.flash, detail: ctx.detail };
   }
 
-  // Bosses: full suited body (legs, arms, gloves, jacket, shirt, tie, cape) with a big round
-  // head carrying the boss's face picture and a crown. The renderer turns the head to the camera.
+  // Bosses: barrel-chested showmen. Every boss shares the build (gold epaulettes, chain and
+  // medallion, big gloves, boots, a swaying cape, orbiting cards) plus a signature style:
+  // cigar, shield, scepter, martini, staff or muscle. The face picture sits on the head,
+  // which the renderer turns toward the camera.
+  function cardPlane(suit, rank, w) {
+    const key = 'bc' + suit + rank;
+    if (!M[key]) {
+      const src = PTD.Art.cardSprite(suit, rank);
+      const c = document.createElement('canvas'); c.width = 108; c.height = 140;
+      c.getContext('2d').drawImage(src, 10, 6, 108, 140, 0, 0, 108, 140);
+      const t = new T.CanvasTexture(c); t.colorSpace = T.SRGBColorSpace;
+      M[key] = new T.MeshBasicMaterial({ map: t, side: T.DoubleSide }); M[key].userData.shared = true;
+    }
+    const m = new T.Mesh(geo('bcard', () => new T.PlaneGeometry(1, 1.3)), M[key]);
+    m.scale.setScalar(w);
+    return m;
+  }
+
   function buildBoss(boss) {
-    const def = { name: '__boss__' };
-    const dark = '#' + new T.Color(boss.color).multiplyScalar(0.55).getHexString();
-    const spec = { body: 'biped', top: boss.color, coat: dark, shirtV: '#ffffff', tie: '#c0392b', bottom: '#1b1b22', shoes: '#0d0d0d',
-      cape: '#6b0f1a', wide: 1.45, glove: '#f2f2f2', belt: '#d4a62a', chain: true };
+    const style = boss.style || 'cigar';
+    const muscle = style === 'muscle';
     const rig = new T.Group();
-    const ctx = { rig, spec, detail: [], flash: [], eyes: [] };
-    ctx.skinM = mat('#f0c8a0', { roughness: 0.55 });
-    const parts = biped(ctx, spec);
-    const head = ctx.head;
-    head.scale.setScalar(1.9);
-    head.position.y = 2.3;
-    part(head, sph(), ctx.skinM, [0.34, 0.34, 0.34]).castShadow = true;
+    const ctx = { rig, detail: [], flash: [], eyes: [], ears: [] };
+    const skinM = mat('#f0c8a0', { roughness: 0.55 });
+    const suit = style === 'cigar' ? patterned(boss.color, 'pinstripe', '#f4d03f') : fabric(boss.color);
+    const jacket = suit.clone();
+    const gold = metal('#e6b422'), dark = fabric('#1b1b22');
+    const W = muscle ? 1.35 : 1.15;
+
+    // legs and boots
+    const legs = [];
+    for (const s2 of [-1, 1]) {
+      const hip = pivot(rig, [s2 * 0.24 * W, 0.95, 0]);
+      part(hip, cap(), dark, [0.17, 0.32, 0.17], [0, -0.38, 0]).castShadow = true;
+      part(hip, cyl(), fabric('#2a1a10'), [0.19, 0.28, 0.19], [0, -0.78, 0]);
+      part(hip, sph(), fabric('#2a1a10'), [0.18, 0.12, 0.27], [0, -0.92, 0.1]);
+      part(hip, cyl(), gold, [0.2, 0.04, 0.2], [0, -0.64, 0]);
+      legs.push(hip);
+    }
+    // torso: barrel chest and belly
+    const torso = pivot(rig, [0, 1.3, 0]);
+    if (muscle) {
+      part(torso, sph(), skinM, [0.66, 0.5, 0.42], [0, 0.15, 0]).castShadow = true;
+      part(torso, sph(), jacket, [0.6, 0.42, 0.4], [0, -0.1, 0.02]).castShadow = true;            // gold tank top
+      for (let r2 = 0; r2 < 3; r2++) for (const s2 of [-1, 1]) part(torso, sph(), skinM, [0.085, 0.07, 0.04], [s2 * 0.1, 0.05 - r2 * 0.13, 0.4]);   // abs
+      for (const s2 of [-1, 1]) part(torso, sph(), skinM, [0.2, 0.15, 0.08], [s2 * 0.2, 0.3, 0.36]);   // pecs
+    } else {
+      part(torso, sph(), jacket, [0.6 * W, 0.52, 0.44], [0, 0.12, 0]).castShadow = true;
+      part(torso, sph(), jacket, [0.5 * W, 0.45, 0.46], [0, -0.22, 0.06]).castShadow = true;
+      part(torso, cone(), fabric('#ffffff'), [0.17, 0.42, 0.03], [0, 0.18, 0.43], [Math.PI, 0, 0]);
+      if (style === 'martini') { for (const s2 of [-1, 1]) part(torso, cone(), gloss('#111'), [0.08, 0.14, 0.05], [s2 * 0.07, 0.36, 0.45], [0, 0, s2 * Math.PI / 2]); }
+      else part(torso, cone(), gloss('#c0392b'), [0.05, 0.34, 0.02], [0, 0.15, 0.46], [Math.PI, 0, 0]);
+      for (let k = 0; k < 3; k++) part(torso, sph(), gold, [0.03, 0.03, 0.02], [0.09, 0.05 - k * 0.12, 0.44]);   // buttons
+    }
+    ctx.flash.push(jacket);
+    // gold epaulettes with fringe
+    for (const s2 of [-1, 1]) {
+      part(torso, cyl(), gold, [0.2, 0.05, 0.16], [s2 * 0.6 * W, 0.42, 0]);
+      for (let k = 0; k < 5; k++) part(torso, cyl(), gold, [0.012, 0.09, 0.012], [s2 * 0.6 * W + (k - 2) * 0.07, 0.34, 0.1]);
+    }
+    // chain, medallion, belt and buckle
+    part(torso, tor(), gold, [0.3, 0.36, 0.3], [0, 0.3, 0.2], [1.1, 0, 0]);
+    const medal = part(torso, cyl(), glow('#ffd34d', 1.4), [0.13, 0.03, 0.13], [0, 0.0, 0.47], [Math.PI / 2, 0, 0]);
+    const lbl = new T.Mesh(geo('dollarPlane', () => new T.PlaneGeometry(0.34, 0.34)), mat('#ffffff', { map: dollar(), transparent: true }));
+    lbl.position.set(0, 0.0, 0.495); lbl.scale.setScalar(0.6); torso.add(lbl);
+    part(torso, cyl(), fabric('#1b1b1b'), [0.52 * W, 0.08, 0.46], [0, -0.48, 0.03]);
+    part(torso, box(), gold, [0.22, 0.16, 0.05], [0, -0.48, 0.48]);
+    // arms with big gloves and rings
+    const arms = [];
+    for (const s2 of [-1, 1]) {
+      const sh = pivot(torso, [s2 * 0.64 * W, 0.32, 0]);
+      part(sh, cap(), muscle ? skinM : jacket, [muscle ? 0.17 : 0.13, 0.28, muscle ? 0.17 : 0.13], [0, -0.32, 0]).castShadow = true;
+      if (muscle) part(sh, sph(), skinM, [0.2, 0.18, 0.2], [0, -0.12, 0]);   // biceps
+      part(sh, sph(), mat('#f4f4f4'), [0.17, 0.17, 0.17], [0, -0.7, 0.03]).castShadow = true;
+      part(sh, tor(), gold, [0.06, 0.06, 0.06], [0, -0.7, 0.16]);
+      arms.push(sh);
+    }
+    // swaying cape in strips
+    const cape = [];
+    if (!muscle) {
+      const capeM = mat(style === 'staff' ? '#2e7d32' : '#7a0f1f', { side: T.DoubleSide, roughness: 0.8 });
+      for (let k = 0; k < 4; k++) {
+        const strip = pivot(torso, [(k - 1.5) * 0.28 * W, 0.4, -0.42]);
+        part(strip, box(), capeM, [0.29 * W, 1.45, 0.03], [0, -0.72, 0]).castShadow = true;
+        part(strip, box(), gold, [0.29 * W, 0.05, 0.035], [0, -1.43, 0]);
+        if (style === 'staff') for (let l = 0; l < 3; l++) part(strip, cone(), mat('#66bb6a'), [0.08, 0.16, 0.02], [0, -0.4 - l * 0.35, -0.03], [0, 0, Math.PI]);
+        cape.push(strip);
+      }
+    }
+    // head: the face picture on a big round head, with a jewelled crown
+    const head = pivot(rig, [0, 2.3, 0]);
+    head.scale.setScalar(1.55);
+    part(head, sph(), skinM, [0.34, 0.34, 0.34]).castShadow = true;
     const faceMat = new T.MeshBasicMaterial({ color: 0xffffff });
     const face = part(head, geo('bossFace', () => new T.CircleGeometry(0.3, 40)), faceMat, [1, 1, 1], [0, 0, 0.345]);
     face.castShadow = false;
-    part(head, tor(), metal('#d4a62a'), [0.305, 0.305, 0.25], [0, 0, 0.345]);
+    part(head, tor(), gold, [0.305, 0.305, 0.25], [0, 0, 0.345]);
     const crown = pivot(head, [0, 0.33, 0]);
-    const gold = metal('#e6b422');
     part(crown, cyl(), gold, [0.22, 0.1, 0.22]);
     for (let k = 0; k < 5; k++) {
       part(crown, cone(), gold, [0.05, 0.18, 0.05], [Math.cos(k / 5 * TAU) * 0.21, 0.13, Math.sin(k / 5 * TAU) * 0.21]);
       part(crown, sph(), glow(['#ff4d4d', '#3d8bff', '#2fa35c', '#ffffff', '#c39bff'][k], 2.2), [0.035, 0.035, 0.035], [Math.cos(k / 5 * TAU) * 0.225, 0.02, Math.sin(k / 5 * TAU) * 0.225]);
+      if (style === 'staff') part(crown, cone(), mat('#66bb6a'), [0.06, 0.16, 0.02], [Math.cos(k / 5 * TAU + 0.6) * 0.24, 0.1, Math.sin(k / 5 * TAU + 0.6) * 0.24], [0, -k / 5 * TAU, 0.4]);
     }
-    // golden rings on the gloves for a bit of bling
-    parts.arms.forEach(a => part(a, tor(), metal('#e6b422'), [0.05, 0.05, 0.05], [0, -0.52, 0.06], [Math.PI / 2, 0, 0]));
-    let quirk = 0, quirkT = 2;
+    if (style === 'cigar') { part(head, cyl(), mat('#6b3e1f'), [0.025, 0.2, 0.025], [0.12, -0.17, 0.33], [0, 0, 1.2]); part(head, sph(), glow('#ff5a1f', 3), [0.03, 0.03, 0.03], [0.21, -0.21, 0.35]); }
+    if (muscle) part(head, cyl(), fabric('#e74c3c'), [0.345, 0.05, 0.345], [0, 0.18, 0]);   // headband
+    // signature prop in the right fist
+    const hand = pivot(arms[1], [0, -0.7, 0.12]);
+    switch (style) {
+      case 'shield': { const sh2 = part(hand, cyl(), fabric('#1f618d'), [0.38, 0.06, 0.38], [0.1, 0, 0.1], [Math.PI / 2, 0, 0.3]); part(sh2, cyl(), fabric('#f4efe2'), [0.75, 1.05, 0.75]); part(sh2, cyl(), fabric('#1f618d'), [0.55, 1.1, 0.55]); break; }
+      case 'scepter': part(hand, cyl(), gold, [0.035, 0.9, 0.035], [0, 0.3, 0]); part(hand, OCTA(), glow('#c39bff', 2.6), [0.1, 0.16, 0.1], [0, 0.8, 0]); break;
+      case 'martini': part(hand, cone(), mat('#ffffff', { transparent: true, opacity: 0.6, roughness: 0.05 }), [0.14, 0.14, 0.14], [0, 0.18, 0], [Math.PI, 0, 0]); part(hand, cyl(), mat('#ffffff'), [0.01, 0.12, 0.01], [0, 0.06, 0]); part(hand, sph(), mat('#6a8f3a'), [0.03, 0.03, 0.03], [0.02, 0.2, 0]); break;
+      case 'staff': part(hand, cyl(), wood('#7a4b2a'), [0.04, 1.4, 0.04], [0, 0.2, 0]); for (let l = 0; l < 4; l++) part(hand, cone(), mat('#66bb6a'), [0.08, 0.18, 0.02], [Math.cos(l) * 0.1, 0.9 + l * 0.05, Math.sin(l) * 0.1], [0.3, l, 0]); break;
+      case 'muscle': part(hand, cyl(), metal('#9aa0a6'), [0.03, 0.6, 0.03], [0, 0, 0], [0, 0, Math.PI / 2]); for (const s2 of [-1, 1]) part(hand, sph(), metal('#2c2c34'), [0.16, 0.16, 0.16], [s2 * 0.3, 0, 0]); break;
+      default: for (let k = 0; k < 4; k++) part(hand, box(), mat('#5f8f4e'), [0.22, 0.01, 0.1], [0, 0.05 + k * 0.012, 0], [0, k * 0.25 - 0.4, 0]);   // fanned cash
+    }
+    // playing cards orbiting the boss
+    const orbit = pivot(rig, [0, 1.6, 0]);
+    for (let k = 0; k < 4; k++) { const cp = cardPlane(k, 14, 0.36); cp.position.set(Math.cos(k / 4 * TAU) * 1.2, Math.sin(k) * 0.15, Math.sin(k / 4 * TAU) * 1.2); cp.rotation.y = -k / 4 * TAU; orbit.add(cp); }
+
+    let quirk = 0, quirkT = 2.5;
+    const smooth = (u) => u * u * (3 - 2 * u);
     const anim = (t, moving, dt, st) => {
       st = st || {};
-      const ph = t * 6 * (st.speed || 1);
+      orbit.rotation.y += dt * 1.1;
+      cape.forEach((c, k) => { c.rotation.x = 0.15 + Math.sin(t * 4 + k * 0.8) * 0.12 + (moving ? 0.2 : 0); });
+      // ---- intro choreography while the boss shows off at the door
+      if (st.intro != null) {
+        const it = st.intro;
+        let lA = 0, rA = 0, lZ = 0, rZ = 0, y = 0, lean = 0, legBend = 0;
+        if (it < 1.3) { lA = rA = -2.8; lZ = -0.5; rZ = 0.5; legBend = 0.5; }                         // falling, arms flailing up
+        else if (it < 2.0) { const k = smooth((it - 1.3) / 0.7); y = -0.3 * k; legBend = 0.9 * k; lA = rA = -0.6 * k; lean = 0.3 * k; }   // crouch
+        else if (it < 2.25) { const k = (it - 2.0) / 0.25; y = -0.3 + Math.sin(k * Math.PI) * 1.2; lA = rA = -2.9; legBend = 0.2; }        // leap and slam
+        else if (it < 3.4) { const k = smooth(Math.min(1, (it - 2.25) / 0.3)); lA = rA = -2.4 * k; lZ = -1.1 * k; rZ = 1.1 * k; torso.scale.setScalar(1 + 0.08 * k * (1 + Math.sin(t * 10) * 0.3)); }   // flex
+        else { torso.scale.setScalar(1); rA = -1.55; lA = -0.4; lZ = 0.6; y = Math.abs(Math.sin(t * 14)) * 0.05; lean = -0.1; }          // point at you and laugh
+        legs[0].rotation.x = -legBend; legs[1].rotation.x = -legBend;
+        arms[0].rotation.x = lA; arms[1].rotation.x = rA; arms[0].rotation.z = lZ; arms[1].rotation.z = rZ;
+        rig.position.y = y; rig.rotation.x = lean;
+        crown.rotation.y += dt * (it > 2.25 && it < 3.4 ? 12 : 1);
+        return;
+      }
+      torso.scale.setScalar(1);
+      // ---- heavy stomping walk, with a fist-pump taunt now and then
+      const ph = t * 5.5 * (st.speed || 1);
       const sw = moving ? Math.sin(ph) : 0;
       quirkT -= dt; if (quirkT <= 0) { quirk = 1.4; quirkT = 3 + Math.random() * 4; }
       quirk = Math.max(0, quirk - dt);
       const q = quirk > 0 ? Math.sin((1.4 - quirk) / 1.4 * Math.PI) : 0;
-      const taunt = !moving || q > 0 ? Math.max(q, moving ? 0 : 0.6 + Math.sin(t * 3) * 0.4) : 0;   // waiting at the door = showing off
-      parts.legs[0].rotation.x = sw * 0.7; parts.legs[1].rotation.x = -sw * 0.7;
-      parts.arms[0].rotation.x = -sw * 0.6 * (1 - taunt) - taunt * 2.6; parts.arms[0].rotation.z = -taunt * 0.6;
-      parts.arms[1].rotation.x = sw * 0.6 * (1 - taunt) - taunt * 2.6; parts.arms[1].rotation.z = taunt * 0.6;
-      rig.position.y = moving ? Math.abs(Math.sin(ph)) * 0.12 : Math.abs(Math.sin(t * 6)) * 0.05 * taunt;
-      rig.rotation.x = 0.05 - (st.hit || 0) * 0.3;
-      rig.rotation.z = moving ? Math.sin(ph * 0.5) * 0.08 : 0;
+      legs[0].rotation.x = sw * 0.75; legs[1].rotation.x = -sw * 0.75;
+      arms[0].rotation.x = -sw * 0.7 * (1 - q) - q * 2.6; arms[0].rotation.z = -q * 0.4;
+      arms[1].rotation.x = sw * 0.7 * (1 - q) - 0.3; arms[1].rotation.z = 0;
+      rig.position.y = moving ? Math.abs(Math.sin(ph)) * 0.14 : 0;
+      rig.rotation.x = 0.06 - (st.hit || 0) * 0.3;
+      rig.rotation.z = moving ? Math.sin(ph * 0.5) * 0.1 : 0;
+      torso.rotation.y = sw * 0.15;
       const sq = 1 - (st.hit || 0) * 0.1;
       rig.scale.set(1 / Math.sqrt(sq), sq, 1 / Math.sqrt(sq));
-      crown.rotation.y += dt * (0.6 + taunt * 3);
+      crown.rotation.y += dt * 0.6;
+      medal.rotation.z = Math.sin(t * 3) * 0.3;
     };
-    const before = new Map();
-    rig.traverse(o => { if (o.isMesh) before.set(o, o.material); });
-    if (PTD.Toon) PTD.Toon.cartoonize(rig, { width: 3.5, onlyShadowCasters: false, skip: (m) => m === face });
+    if (PTD.Toon) PTD.Toon.cartoonize(rig, { width: 3.5, skip: (m) => m === face, style: { bright: 0.5, rim: '#7a5a30' } });
     const flash = [];
-    rig.traverse(o => { if (o.isMesh && o.material && o.material.emissive && before.get(o) === ctx.topM) flash.push(o.material); });
-    return { rig, anim, flash, head, faceMat, face };
+    rig.traverse(o => { if (o.isMesh && o.material && o.material.emissive && !o.material.userData.shared && flash.indexOf(o.material) < 0) flash.push(o.material); });
+    return { rig, anim, flash: flash.slice(0, 6), head, faceMat, face };
   }
 
   PTD.Looters3D = { build, buildBoss, SPECS };

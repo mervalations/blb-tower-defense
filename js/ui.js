@@ -121,7 +121,7 @@
         if (d.bosses) {
           const faces = d.bosses.map(b => b.image ? '<img class="boss-face" src="' + b.image + '" alt="">' : '').join(' ');
           const hp = Math.round(game.creepHp(d.def) * (d.def.hpEach || 1) * (game.mode.curve ? PTD.RULES.bossHpMult : 1));
-          banner(faces + '<div>' + d.bosses.map(b => esc(b.name)).join(' &amp; ') + '</div>', d.bosses[0].title + '  &middot;  ' + fmt(hp) + ' HP' + (d.bosses.length > 1 ? ' each' : '') + (d.def.final ? '  &middot;  destroys towers!' : ''), 3400, true);
+          banner(faces + '<div>' + d.bosses.map(b => esc(b.name)).join(' &amp; ') + '</div>', d.bosses[0].title + '  &middot;  ' + fmt(hp) + ' HP' + (d.bosses.length > 1 ? ' each' : '') + (d.def.final ? '  &middot;  destroys towers!' : ''), 1900, true);
           A.play('boss');
           A.clip(d.bosses[0].intro);
         } else {
