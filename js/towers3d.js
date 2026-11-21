@@ -55,35 +55,43 @@ window.PTD = window.PTD || {};
   function toon(m) {
     if (!m || !m.isMeshStandardMaterial || m.transparent) return m;
     if (toonCache.has(m.uuid)) return toonCache.get(m.uuid);
+    const own = !m.userData.shared;   // a per-object clone stays per-object
     // metals keep a little extra brightness so gold still reads as gold
     // toon materials skip PBR energy loss, so scale down to stay under the bloom threshold
     const c = m.color.clone().multiplyScalar(m.metalness > 0.5 ? 0.62 : 0.5);
     const t = new T.MeshToonMaterial({ color: c, map: m.map || null, gradientMap: ramp(), emissive: m.emissive ? m.emissive.clone() : new T.Color(0), emissiveMap: m.emissiveMap || null });
+    if (own) return t;
     t.userData.shared = true;
     toonCache.set(m.uuid, t);
     return t;
   }
-  let outlineMat = null;
-  function outline() {
-    if (outlineMat) return outlineMat;
-    outlineMat = new T.MeshBasicMaterial({ color: 0x120a06, side: T.BackSide });
+  const outlineMats = {};
+  // width is in world units, whatever the object's scale
+  function outline(width) {
+    const w = width || 6;
+    if (outlineMats[w]) return outlineMats[w];
+    const outlineMat = outlineMats[w] = new T.MeshBasicMaterial({ color: 0x120a06, side: T.BackSide });
     outlineMat.onBeforeCompile = (sh) => {
-      sh.uniforms.ow = { value: 6.0 };
+      sh.uniforms.ow = { value: w };
       sh.vertexShader = 'uniform float ow;\n' + sh.vertexShader.replace('#include <begin_vertex>',
         '#include <begin_vertex>\n transformed += normalize(normal) * ow / max(0.001, length(modelMatrix[0].xyz));');
     };
     outlineMat.userData.shared = true;
     return outlineMat;
   }
-  function cartoonize(root) {
+  // opts: { width, onlyShadowCasters, skip(mesh) }
+  function cartoonize(root, opts) {
+    opts = opts || {};
     const solids = [];
     root.traverse(o => { if (o.isMesh && !o.userData.isOutline) solids.push(o); });
     for (const o of solids) {
+      if (opts.skip && opts.skip(o)) continue;
       if (Array.isArray(o.material)) { o.material = o.material.map(toon); continue; }
       const basic = o.material.isMeshBasicMaterial;
       o.material = toon(o.material);
       if (basic || o.material.transparent || o.material.blending === T.AdditiveBlending) continue;
-      const hull = new T.Mesh(o.geometry, outline());
+      if (opts.onlyShadowCasters && !o.castShadow) continue;
+      const hull = new T.Mesh(o.geometry, outline(opts.width));
       hull.userData.isOutline = true; hull.userData.towerId = o.userData.towerId;
       hull.castShadow = false; hull.raycast = () => {};
       o.add(hull);
@@ -423,4 +431,5 @@ window.PTD = window.PTD || {};
   }
 
   PTD.Towers3D = { build, COMBO_SCALE };
+  PTD.Toon = { toon, outline, cartoonize };
 })();

@@ -62,6 +62,96 @@ window.PTD = window.PTD || {};
     seed = 1234567;
     const updaters = [];
 
+    // ------------------------------------------------------------ cartoon cobblestone paths
+    {
+      const tile = canvasTex(512, 512, (x, W) => {
+        x.fillStyle = '#2b1d14'; x.fillRect(0, 0, W, W);                       // mortar
+        const stones = ['#9c8a74', '#8a7864', '#b09a7e', '#7d6c5a', '#a48c70', '#c2a988'];
+        let sd = 7; const rn = () => { sd = (sd * 16807) % 2147483647; return sd / 2147483647; };
+        const rows = 8, h = W / rows;
+        for (let r = 0; r < rows; r++) {
+          let cx = r % 2 ? -h * 0.5 : 0;
+          while (cx < W) {
+            const w = h * (0.9 + rn() * 0.7), y = r * h;
+            const col = stones[Math.floor(rn() * stones.length)];
+            const draw = (ox) => {
+              const X = cx + 5 + ox, Y = y + 5, Wd = w - 10, Hd = h - 10, R = 14;
+              x.beginPath(); x.moveTo(X + R, Y); x.arcTo(X + Wd, Y, X + Wd, Y + Hd, R); x.arcTo(X + Wd, Y + Hd, X, Y + Hd, R);
+              x.arcTo(X, Y + Hd, X, Y, R); x.arcTo(X, Y, X + Wd, Y, R); x.closePath();
+              x.fillStyle = col; x.fill();
+              x.lineWidth = 5; x.strokeStyle = 'rgba(255,255,255,0.22)';             // cartoon highlight
+              x.beginPath(); x.moveTo(X + R, Y + 4); x.lineTo(X + Wd - R, Y + 4); x.stroke();
+              x.strokeStyle = 'rgba(0,0,0,0.35)';                                      // and shadow edge
+              x.beginPath(); x.moveTo(X + R, Y + Hd - 3); x.lineTo(X + Wd - R, Y + Hd - 3); x.stroke();
+            };
+            draw(0); if (cx + w > W) draw(-W);                                         // wrap for seamless tiling
+            cx += w;
+          }
+        }
+      });
+      tile.wrapS = tile.wrapT = T.RepeatWrapping;
+      const roadMat = new T.MeshStandardMaterial({ map: tile, roughness: 0.85, envMapIntensity: 0.2 });
+      roadMat.onBeforeCompile = (sh) => {
+        sh.vertexShader = sh.vertexShader.replace('#include <uv_vertex>', `#include <uv_vertex>
+          { vec4 wp = modelMatrix * instanceMatrix * vec4(position, 1.0); vMapUv = vec2(wp.x, -wp.z) / 300.0; }`);
+      };
+      const rects = r.rectsOf(1);
+      const roads = new T.InstancedMesh(new T.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), roadMat, rects.length);
+      const d = new T.Object3D();
+      rects.forEach((q, i) => {
+        const w = (q.x1 - q.x0) * cell, h = (q.y1 - q.y0) * cell;
+        d.position.copy(W2T(map.origin + q.x0 * cell + w / 2, map.origin + q.y0 * cell + h / 2, 1.5));
+        d.scale.set(w, 1, h); d.updateMatrix(); roads.setMatrixAt(i, d.matrix);
+      });
+      roads.receiveShadow = true;
+      S.add(roads);
+
+      // each lane gets a soft ribbon of its owner's colour down the middle
+      for (const pl of g.players) {
+        const pts = pl.lane.path, pos = [];
+        for (let i = 1; i < pts.length; i++) {
+          const a = pts[i - 1], b = pts[i], dx = b.x - a.x, dy = b.y - a.y, L = Math.hypot(dx, dy) || 1;
+          const nx = -dy / L * 34, ny = dx / L * 34;
+          const q = [[a.x + nx, a.y + ny], [a.x - nx, a.y - ny], [b.x - nx, b.y - ny], [b.x + nx, b.y + ny]].map(([x, y]) => W2T(x, y, 2.5));
+          pos.push(...q[0].toArray(), ...q[1].toArray(), ...q[2].toArray(), ...q[0].toArray(), ...q[2].toArray(), ...q[3].toArray());
+        }
+        const geo = new T.BufferGeometry(); geo.setAttribute('position', new T.Float32BufferAttribute(pos, 3));
+        const ribbon = new T.Mesh(geo, new T.MeshBasicMaterial({ color: new T.Color(pl.color), transparent: true, opacity: 0.38, depthWrite: false, side: T.DoubleSide }));
+        S.add(ribbon);
+      }
+
+      // gold curbs wherever the raised felt meets a path
+      const N = map.size, G = map.grid, runs = [];
+      const at = (cx, cy) => (cx < 0 || cy < 0 || cx >= N || cy >= N) ? 2 : G[cy * N + cx];
+      for (let y = 1; y < N; y++) {            // horizontal boundaries between row y-1 and y
+        let start = -1;
+        for (let x = 0; x <= N; x++) {
+          const a = x < N ? at(x, y - 1) : 9, b = x < N ? at(x, y) : 9;
+          const edge = (a === 0 && b === 1) || (a === 1 && b === 0);
+          if (edge && start < 0) start = x;
+          if (!edge && start >= 0) { runs.push([start, y, x - start, 0]); start = -1; }
+        }
+      }
+      for (let x = 1; x < N; x++) {            // vertical boundaries between column x-1 and x
+        let start = -1;
+        for (let y = 0; y <= N; y++) {
+          const a = y < N ? at(x - 1, y) : 9, b = y < N ? at(x, y) : 9;
+          const edge = (a === 0 && b === 1) || (a === 1 && b === 0);
+          if (edge && start < 0) start = y;
+          if (!edge && start >= 0) { runs.push([x, start, y - start, 1]); start = -1; }
+        }
+      }
+      const curb = new T.InstancedMesh(new T.BoxGeometry(1, 1, 1), std('#d9a82e', { metalness: 0.9, roughness: 0.25 }), runs.length);
+      runs.forEach(([cx, cy, n, vert], i) => {
+        const len = n * cell + 14;
+        if (!vert) { d.position.copy(W2T(map.origin + (cx + n / 2) * cell, map.origin + cy * cell, FELT_H + 4)); d.scale.set(len, 10, 14); }
+        else { d.position.copy(W2T(map.origin + cx * cell, map.origin + (cy + n / 2) * cell, FELT_H + 4)); d.scale.set(14, 10, len); }
+        d.updateMatrix(); curb.setMatrixAt(i, d.matrix);
+      });
+      curb.castShadow = true;
+      S.add(curb);
+    }
+
     // ------------------------------------------------------------ marquee bulbs on the rim
     {
       const pts = [];

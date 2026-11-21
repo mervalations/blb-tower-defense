@@ -629,7 +629,12 @@ window.PTD = window.PTD || {};
       aura.rotation.x = -Math.PI / 2; aura.position.y = 0.03; rig.add(aura);
       const light = new T.PointLight(0xffc040, 0.8, 900, 0); light.position.set(0, 260, 220); root.add(light);
       this.addHealthBar(root, R * 4.1, 240);
-      root.userData = { rig, flash: [suitM], feet, headG, face, faceMat, boss: b, aura, lastHp: c.hp, hitT: 0, faceReady: false,
+      let flashM = suitM;
+      if (PTD.Toon) {
+        PTD.Toon.cartoonize(rig, { width: 4, skip: (m) => m === face || m === aura });
+        flashM = torso.material;
+      }
+      root.userData = { rig, flash: [flashM], feet, headG, face, faceMat, boss: b, aura, lastHp: c.hp, hitT: 0, faceReady: false,
         anim: (t, moving) => { const ph = t * 9; feet[0].position.z = moving ? Math.sin(ph) * 0.25 : 0.05; feet[1].position.z = moving ? -Math.sin(ph) * 0.25 : 0.05;
           rig.position.y = moving ? Math.abs(Math.sin(ph)) * R * 0.1 : 0; rig.rotation.z = moving ? Math.sin(ph) * 0.05 : 0; } };
       this.scene.add(root);

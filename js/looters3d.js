@@ -163,7 +163,8 @@ window.PTD = window.PTD || {};
       if (s === 1) ctx.rightHand = hand;
     }
     if (o.knuckles) ctx.detail.push(part(arms[1], tor(), metal('#b08d57'), [0.07, 0.07, 0.1], [0, -0.52, 0.08], [0, Math.PI / 2, 0]));
-    const head = pivot(rig, [0, 1.95, 0]);
+    const head = pivot(rig, [0, 2.02, 0]);
+    head.scale.setScalar(1.32);   // bobble-head proportions, like the bosses
     part(rig, cyl(), ctx.skinM, [0.09, 0.15, 0.09], [0, 1.78, 0]);
     ctx.head = head;
     return { legs, arms, torso };
@@ -498,8 +499,15 @@ window.PTD = window.PTD || {};
       setStars(!!st.stun, t);
     }
 
-    // Shadows only from the big shapes keeps 100+ looters cheap.
-    rig.traverse(o => { if (o.isMesh && o.castShadow === undefined) o.castShadow = false; });
+    // Cartoon look: toon shading everywhere, outlines on the big shapes only (keeps 100+ looters cheap).
+    if (PTD.Toon) {
+      const before = new Map();
+      rig.traverse(o => { if (o.isMesh) before.set(o, o.material); });
+      PTD.Toon.cartoonize(rig, { width: 2.6, onlyShadowCasters: true });
+      const swap = new Map();
+      for (const [o, m] of before) if (o.material !== m) swap.set(m, o.material);
+      ctx.flash = ctx.flash.map(m => swap.get(m) || m).filter(m => m.emissive);
+    }
     return { rig, anim, flash: ctx.flash, detail: ctx.detail };
   }
 
