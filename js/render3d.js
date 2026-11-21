@@ -658,6 +658,24 @@ window.PTD = window.PTD || {};
         const ud = o.userData;
         const tgt = W2T(c.x, c.y, 0);
         o.position.lerp(tgt, Math.min(1, dt * 20));
+        // Boss entrance: drop in from the sky spinning, bounce on landing with a shockwave.
+        if (c.boss && ud.enterT == null) ud.enterT = 0;
+        if (c.boss && ud.enterT < 1.3) {
+          ud.enterT += dt;
+          const k = Math.min(1, ud.enterT / 1.3);
+          const bounce = (u) => { const n = 7.5625, d = 2.75; if (u < 1 / d) return n * u * u; if (u < 2 / d) return n * (u -= 1.5 / d) * u + 0.75; if (u < 2.5 / d) return n * (u -= 2.25 / d) * u + 0.9375; return n * (u -= 2.625 / d) * u + 0.984375; };
+          o.position.y = (1 - bounce(k)) * 1600;
+          o.rotation.y = (1 - k) * Math.PI * 4;
+          const sc = 0.55 + 0.45 * k; o.scale.set(sc, sc, sc);
+          if (!ud.landed && k > 0.37) {   // first touchdown of the bounce
+            ud.landed = true;
+            this.shake = Math.max(this.shake, 150);
+            this.game.fx.push({ kind: 'ring', x: c.x, y: c.y, t: 0, life: 0.9, color: '#ffcf40', r: 750 });
+            this.burst(W2T(c.x, c.y, 40), '#ffcf40', 34, 560, 0.8);
+            this.burst(W2T(c.x, c.y, 20), '#d9c3a0', 20, 300, 0.9);
+          }
+          if (k >= 1) { o.position.y = 0; o.rotation.y = 0; o.scale.set(1, 1, 1); }
+        }
         const want = Math.atan2(Math.cos(c.dir), -Math.sin(c.dir));   // face the walking direction
         let d = (want - ud.rig.rotation.y + Math.PI * 3) % TAU - Math.PI;
         ud.rig.rotation.y += d * Math.min(1, dt * 10);
@@ -1018,11 +1036,7 @@ window.PTD = window.PTD || {};
             const b = this.game.creeps.find(cr => cr.boss && cr.alive && cr.owner === me.id);
             if (b) {
               c.to.x += ((b.x + 250) - c.to.x) * Math.min(1, dt * 3); c.to.y += ((b.y - 550) - c.to.y) * Math.min(1, dt * 3);
-              if (!this.bossLanded) {
-                this.bossLanded = true; this.shake = Math.max(this.shake, 140);
-                this.game.fx.push({ kind: 'ring', x: b.x, y: b.y, t: 0, life: 0.9, color: '#ffcf40', r: 700 });
-                this.burst(W2T(b.x, b.y, 60), '#ffcf40', 30, 520, 0.7);
-              }
+
             }
           }
           const k = c.t < 1.2 ? c.t / 1.2 : c.t > c.dur - 1.2 ? Math.max(0, (c.dur - c.t) / 1.2) : 1;

@@ -181,8 +181,19 @@
     return PTD.RULES.creepsPerLevel + ' x ' + def.name + ' · ' + fmt(game.creepHp(def)) + ' HP · leak -' + def.leak + (tags.length ? ' · ' + tags.join(', ') : '');
   }
 
+  // While your boss is on the board, its voice line comes back 5 seconds after it last finished.
+  function bossVoice(g, me) {
+    const b = g.phase === 'spawn' && g.creeps.find(c => c.boss && c.alive && c.owner === me.id);
+    if (!b) { ui.voiceIdle = 0; return; }
+    const now = performance.now();
+    if (A.busy()) { ui.voiceIdle = now; return; }
+    if (!ui.voiceIdle) ui.voiceIdle = now;
+    if (now - ui.voiceIdle >= 5000) { A.clip(PTD.BOSSES[b.bossIdx].intro); ui.voiceIdle = now; }
+  }
+
   function updateHud() {
     const g = game, me = g.human;
+    bossVoice(g, me);
     const showLevel = g.phase === 'hand' ? g.level + 1 : g.level;
     $('tb-level').textContent = Math.min(30, Math.max(1, showLevel)) + ' / 30';
     $('tb-phase').textContent = ui.paused ? 'Paused' : PHASE[g.phase] || '';

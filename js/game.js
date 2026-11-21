@@ -16,7 +16,24 @@ PTD.MapGrid = class {
         for (let i = 0; i < n; i++) this.grid[y * this.size + x++] = v;
       }
     });
+    this.widenRoads(PTD.RULES.roadWiden || 0);
     this.lanes = md.lanes;
+  }
+  // Grow every road by n cells on each side (turns the bordering felt into road).
+  widenRoads(n) {
+    const N = this.size, g = this.grid;
+    for (let pass = 0; pass < n; pass++) {
+      const src = g.slice();
+      for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+        if (src[y * N + x] !== 0) continue;
+        let road = false;
+        for (let dy = -1; dy <= 1 && !road; dy++) for (let dx = -1; dx <= 1; dx++) {
+          const xx = x + dx, yy = y + dy;
+          if (xx >= 0 && yy >= 0 && xx < N && yy < N && src[yy * N + xx] === 1) { road = true; break; }
+        }
+        if (road) g[y * N + x] = 1;
+      }
+    }
   }
   cellAt(wx, wy) {
     const cx = Math.floor((wx - this.origin) / this.cell), cy = Math.floor((wy - this.origin) / this.cell);

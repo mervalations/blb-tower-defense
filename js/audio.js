@@ -276,8 +276,11 @@ PTD.Audio = (function () {
     voice.play().catch(() => Music.duck(false));
   }
 
+  // true while a voice clip is still playing
+  function busy() { return !!(voice && !voice.paused && !voice.ended); }
+
   return {
-    clip,
+    clip, busy,
     play(name, arg) { try { sfx[name] && sfx[name](arg); } catch (e) { /* audio is optional */ } },
     unlock() { if (ensure() && ctx.state === 'suspended') ctx.resume(); if (!muted) Music.start(); },
     // Sound button cycles: everything on -> music off -> all off.

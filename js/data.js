@@ -18,12 +18,13 @@ PTD.RULES = {
   intermission: 2,
   towerFootprint: 128,
   snap: 64,
+  roadWiden: 1,            // paths are drawn 1 grid cell (32 units) wider on each side than the original map
 };
 
 // HP curve for the solo modes (see Game.creepHp). Tuned with tools/sim.js; PTD_CURVE overrides it there.
-const CURVE = +(typeof process !== 'undefined' && process.env && process.env.PTD_CURVE) || 0.69;
+const CURVE = +(typeof process !== 'undefined' && process.env && process.env.PTD_CURVE) || 0.67;
 // Looter health multiplier for levels 1-5 in the solo modes (Classic keeps the original).
-PTD.EARLY_EASE = [0.3, 0.45, 0.6, 0.75, 0.9];
+PTD.EARLY_EASE = [0.22, 0.35, 0.5, 0.65, 0.82];
 
 PTD.MODES = [
   { key: 'amateur', name: 'Amateur', hpMult: 0.75, curve: CURVE, bonusMult: 1, bountyMult: 2, ante: true, desc: 'Weaker looters. Learn the ropes.' },
