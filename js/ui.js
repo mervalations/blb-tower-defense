@@ -100,7 +100,7 @@
       case 'deal': if (d.player === me) A.play('deal'); break;
       case 'swap': if (d.player === me) A.play('swap'); break;
       case 'combine':
-        if (d.player === me) A.play('combine');
+        if (d.player === me) { A.play('combine'); banner(esc(d.combo.title), 'Hand combined into a tower!', 1300, false, 'combo'); }
         else if (d.combo.type >= 5) toast(d.player.name + ' made ' + d.combo.title + '!');
         break;
       case 'tip': if (d.player === me) A.play('tip'); break;
@@ -131,9 +131,14 @@
         break;
       }
       case 'allFolded': toast('Everyone folded. No looters this round.'); break;
+      case 'waveCleared':
+        if (me && me.alive) { banner('Wave cleared!', 'Level ' + game.level + ' done &middot; the stash is safe', 1500, false, 'cleared'); A.play('coin'); }
+        break;
       case 'kill':
         if (d.owner === me) A.play('coin');
         if (d.boss && d.owner === me) { const b = PTD.BOSSES[d.creep ? d.creep.bossIdx : -1]; A.clip((b && b.defeat) || 'back-shots'); }
+        // hit-stop: a beat of slow motion when a boss goes down (solo only, so nobody else's game slows)
+        if (d.boss && !net) ui.slowmo = 0.6;
         break;
       case 'leak': if (d.player === me) { A.play('leak'); flashGold(); } break;
       case 'defeat': if (d.player !== me) toast(d.player.name + ' went broke!'); break;
@@ -147,10 +152,12 @@
   // ---------- HUD ----------
   const fmt = (n) => n >= 10000 ? (n / 1000).toFixed(n >= 100000 ? 0 : 1) + 'k' : String(n);
   let bannerTimer = 0;
-  function banner(title, sub, ms, boss) {
+  function banner(title, sub, ms, boss, kind) {
     const b = $('banner');
     b.innerHTML = '<h2>' + title + '</h2>' + (sub ? '<p>' + sub + '</p>' : '');
     b.classList.toggle('boss', !!boss);
+    b.classList.toggle('cleared', kind === 'cleared');
+    b.classList.toggle('combo', kind === 'combo');
     b.classList.remove('hidden');
     b.style.animation = 'none'; void b.offsetWidth; b.style.animation = '';
     clearTimeout(bannerTimer);
@@ -218,8 +225,34 @@
     $('act-fold').querySelector('small').textContent = ui.foldArmed > now ? 'press again!' : 'Esc';
     $('act-ready').disabled = !(g.phase === 'hand' && me.alive && !me.ready);
     $('hint').innerHTML = hintText();
+    updateBossBar(g, me);
     updateHandCards();
     updateInspect();
+  }
+
+  // On-screen health for the bosses walking your lane, with a trailing damage segment.
+  const bossTrail = {};
+  function updateBossBar(g, me) {
+    const el = $('bossbar');
+    const bosses = me ? g.creeps.filter(c => c.boss && c.alive && c.owner === me.id) : [];
+    if (!bosses.length) { if (!el.classList.contains('hidden')) { el.classList.add('hidden'); el.innerHTML = ''; } return; }
+    el.classList.remove('hidden');
+    const key = bosses.map(c => c.id).join(',');
+    if (el.dataset.key !== key) {
+      el.dataset.key = key;
+      el.innerHTML = bosses.map(c => { const b = PTD.BOSSES[c.bossIdx] || {}; const src = b.image ? ((PTD.BOSS_FACES && PTD.BOSS_FACES[b.image]) || b.image) : '';
+        return '<div class="bb">' + (src ? '<img src="' + src + '" alt="">' : '') + '<div class="bb-main"><div class="bb-name"><span>' + esc(b.name || 'Boss') + '</span><span class="bb-hp"></span></div>'
+          + '<div class="bb-bar"><div class="bb-trail"></div><div class="bb-fill"></div></div></div></div>'; }).join('');
+    }
+    const rows = el.querySelectorAll('.bb');
+    bosses.forEach((c, i) => {
+      const r = rows[i]; if (!r) return;
+      const f = Math.max(0, c.hp / c.maxHp);
+      const tr = bossTrail[c.id] = Math.max(f, (bossTrail[c.id] == null ? 1 : bossTrail[c.id]) - 0.004);
+      r.querySelector('.bb-fill').style.width = (f * 100).toFixed(1) + '%';
+      r.querySelector('.bb-trail').style.width = (tr * 100).toFixed(1) + '%';
+      r.querySelector('.bb-hp').textContent = fmt(Math.ceil(c.hp));
+    });
   }
 
   function hintText() {
@@ -656,7 +689,9 @@
     if (!g) return dt;
     if (!ui.paused || !game) {
       const steps = !game ? 2 : (net instanceof PTD.Net.Client ? 1 : ui.speed);
-      for (let i = 0; i < steps; i++) g.update(dt);
+      const slow = ui.slowmo > 0 ? 0.2 + 0.8 * Math.max(0, 1 - ui.slowmo / 0.6) ** 2 : 1;
+      ui.slowmo = Math.max(0, (ui.slowmo || 0) - dt);
+      for (let i = 0; i < steps; i++) g.update(dt * slow);
     }
     if (net instanceof PTD.Net.Host) net.tick(dt);
     if (demo && demo.phase === 'over') startDemo();

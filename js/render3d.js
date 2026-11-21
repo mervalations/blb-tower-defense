@@ -9,6 +9,7 @@ window.PTD = window.PTD || {};
   const T = window.THREE;
   const TAU = Math.PI * 2;
   const W2T = (x, y, h) => new T.Vector3(x, h || 0, -y);
+  const fmtDmg = (n) => n >= 10000 ? (n / 1000).toFixed(n >= 100000 ? 0 : 1) + 'k' : String(Math.round(n));
   const FELT_H = 44;   // buildable felt is raised; lanes are channels cut into the table
 
   // ---------------------------------------------------------------- shared resources
@@ -282,7 +283,7 @@ window.PTD = window.PTD || {};
       this.ground = new T.Plane(new T.Vector3(0, 1, 0), -FELT_H);   // clicks land on the felt surface
       this.shake = 0; this.flash = 0; this.cine = null;
       this.towerObjs = new Map(); this.creepObjs = new Map(); this.shotObjs = new Map(); this.fxObjs = new Map();
-      this.particles = []; this.dying = []; this.frame = 0; this.slowFrames = 0;
+      this.particles = []; this.dying = []; this.frame = 0; this.slowFrames = 0; this.floaters = []; this.textCache = new Map();
       this.quality = (PTD.Renderer3D.quality || 'high');
       this.buildScene();
       this.resize();
@@ -526,6 +527,7 @@ window.PTD = window.PTD || {};
       const owner = this.game.players[t.owner];
       const m = PTD.Towers3D.build(t, owner.color);
       grp.add(m.root);
+      if (t.kind === 'combo' && this.frame > 30) this.pillar(t.x, t.y, PTD.COMBOS[t.type].color);   // a hand just got combined
       // gold ring under a selected hand card
       const sel = new T.Mesh(geo('selRing', () => new T.TorusGeometry(70, 6, 8, 48)), glowMat('#ffd640', 2.6));
       sel.rotation.x = Math.PI / 2; sel.position.y = 4; sel.visible = false; grp.add(sel);
@@ -604,7 +606,7 @@ window.PTD = window.PTD || {};
       const ch = PTD.Looters3D.build(c.def, c.variant || 0);
       const S = R * 2.5 * (c.variant === 3 ? 1.3 : 1);   // crew leaders walk in a size bigger
       const holder = new T.Group(); holder.scale.setScalar(S); holder.add(ch.rig); root.add(holder);
-      this.addHealthBar(root, S * 2.4, c.variant === 3 ? 130 : 100);
+      this.addHealthBar(root, S * 2.4, c.variant === 3 ? 130 : 100, false);
       root.userData = { rig: holder, anim: ch.anim, flash: ch.flash, detail: ch.detail, lastHp: c.hp, hitT: 0 };
       this.scene.add(root);
       return root;
@@ -620,7 +622,7 @@ window.PTD = window.PTD || {};
       if (m.stage) holder.add(m.stage);   // intro props (arm-wrestling table and challenger)
       const aura = new T.Mesh(geo('aura', () => new T.RingGeometry(1.2, 1.6, 48)), new T.MeshBasicMaterial({ color: new T.Color('#ffcf40').multiplyScalar(0.8), transparent: true, opacity: 0.35, depthWrite: false, blending: T.AdditiveBlending, side: T.DoubleSide }));
       aura.rotation.x = -Math.PI / 2; aura.position.y = 0.03; holder.add(aura);
-      this.addHealthBar(root, R * 8.4, 340);
+      this.addHealthBar(root, R * 8.4, 340, true);
       root.userData = { rig: holder, flash: m.flash, headG: m.head, face: m.face, faceMat: m.faceMat, boss: b, aura, lastHp: c.hp, hitT: 0, faceReady: false, anim: m.anim, palms: m.palms };
       this.scene.add(root);
       return root;
@@ -641,13 +643,20 @@ window.PTD = window.PTD || {};
       }
     }
 
-    addHealthBar(root, y, w) {
-      const bg = new T.Sprite(mat('hpBg', () => new T.SpriteMaterial({ color: 0x000000, transparent: true, opacity: 0.75, depthWrite: false })));
-      bg.scale.set(w + 10, w > 100 ? 26 : 16, 1); bg.position.y = y; root.add(bg);
+    // Framed bar with a pale "recent damage" segment that drains after the fill.
+    addHealthBar(root, y, w, always) {
+      const hBar = w > 100 ? 18 : 11;
+      const grp = new T.Group(); grp.position.y = y; root.add(grp);
+      const frame = new T.Sprite(mat('hpFrame', () => new T.SpriteMaterial({ color: 0xfff1c9, depthWrite: false })));
+      frame.scale.set(w + 12, hBar + 10, 1); grp.add(frame);
+      const bg = new T.Sprite(mat('hpBg', () => new T.SpriteMaterial({ color: 0x1a1016, depthWrite: false })));
+      bg.scale.set(w + 4, hBar + 3, 1); bg.position.z = 0.05; grp.add(bg);
+      const trail = new T.Sprite(mat('hpTrail', () => new T.SpriteMaterial({ color: 0xffe9a8, depthWrite: false })));
+      trail.center.set(0, 0.5); trail.scale.set(w, hBar, 1); trail.position.set(-w / 2, 0, 0.08); grp.add(trail);
       const fill = new T.Sprite(new T.SpriteMaterial({ color: 0x46d17a, depthWrite: false }));
-      fill.center.set(0, 0.5); fill.scale.set(w, w > 100 ? 18 : 10, 1); fill.position.set(-w / 2, y, 0.1);
-      root.add(fill);
-      root.userData_hp = { fill, w };
+      fill.center.set(0, 0.5); fill.scale.set(w, hBar, 1); fill.position.set(-w / 2, 0, 0.1); grp.add(fill);
+      grp.visible = !!always;
+      root.userData_hp = { grp, fill, trail, w, trailF: 1, always: !!always };
     }
 
     syncCreeps(now, dt) {
@@ -682,8 +691,21 @@ window.PTD = window.PTD || {};
         let d = (want - ud.rig.rotation.y + Math.PI * 3) % TAU - Math.PI;
         ud.rig.rotation.y += d * Math.min(1, dt * 10);
         const moving = !(c.wait > 0) && !(c.stunT > 0) && !(c.fallT > 0);
-        if (c.hp < ud.lastHp - 0.5) ud.hitT = 0.12;
+        if (c.hp < ud.lastHp - 0.5) {
+          ud.hitT = 0.12;
+          const hitY = c.boss ? c.radius * 3.5 : c.radius * 2.2;
+          if (now - (ud.sparkT || 0) > 90 && this.view.zoom > 0.07) { ud.sparkT = now; this.burst(o.position.clone().setY(hitY), '#fff3c4', 3, 240, 0.16); }
+          // damage numbers on your own lane, added up so fast towers don't spam
+          const me = g.human;
+          if (me && c.owner === me.id) ud.dmgAcc = (ud.dmgAcc || 0) + (ud.lastHp - c.hp);
+        }
         ud.lastHp = c.hp;
+        ud.dmgT = (ud.dmgT || 0) - dt;
+        if (ud.dmgAcc >= 1 && ud.dmgT <= 0 && this.view.zoom > 0.07) {
+          ud.dmgT = 0.32;
+          this.floater(o.position.clone().setY((c.boss ? c.radius * 9 : c.radius * 6) + Math.random() * 30), fmtDmg(ud.dmgAcc), c.boss ? '#ffd34d' : '#ffffff', c.boss ? 64 : 46);
+          ud.dmgAcc = 0;
+        }
         ud.hitT = Math.max(0, ud.hitT - dt);
         let intro = null;
         if (c.boss && c.wait > 0) {
@@ -742,24 +764,34 @@ window.PTD = window.PTD || {};
           ud.aura.material.opacity = 0.35 + 0.25 * Math.sin(t * 4);
         }
         const hp = o.userData_hp, f = Math.max(0, c.hp / c.maxHp);
-        hp.fill.scale.x = hp.w * f;
+        hp.grp.visible = hp.always || f < 0.999;
+        hp.fill.scale.x = Math.max(0.001, hp.w * f);
+        hp.trailF = f >= hp.trailF ? f : Math.max(f, hp.trailF - dt * (0.25 + (hp.trailF - f) * 2));
+        hp.trail.scale.x = Math.max(0.001, hp.w * hp.trailF);
         hp.fill.material.color.set(f > 0.5 ? '#46d17a' : f > 0.25 ? '#f2c12e' : '#ef4b4b');
       }
       for (const [id, o] of this.creepObjs) {
         if (seen.has(id)) continue;
-        this.burst(o.position.clone().setY(60), '#fff2c4', 10, 220);
-        o.children.forEach(ch => { if (ch.isSprite) ch.visible = false; });   // hide the health bar
-        this.dying.push({ o, t: 0 });
+        const big = !!o.userData.headG;
+        const at = o.position.clone();
+        this.poof(at.clone().setY(70), big ? 14 : 7, big ? 1.8 : 1);
+        this.burst(at.clone().setY(110), '#ffe066', big ? 18 : 7, big ? 520 : 300, 0.5);
+        this.burst(at.clone().setY(90), '#ffffff', big ? 10 : 4, 260, 0.3);
+        if (o.userData_hp) o.userData_hp.grp.visible = false;
+        this.dying.push({ o, t: 0, spin: (Math.random() < 0.5 ? -1 : 1) * (10 + Math.random() * 8), dx: (Math.random() - 0.5) * 260, dz: (Math.random() - 0.5) * 260, x0: at.x, z0: at.z });
         this.creepObjs.delete(id);
       }
-      // defeated looters spin, jump and shrink away
+      // defeated looters squash, then get launched spinning into the air and pop away
       this.dying = this.dying.filter(d => {
         d.t += dt;
-        const k = d.t / 0.55;
-        if (k >= 1) { this.scene.remove(d.o); return false; }
-        d.o.rotation.y += dt * 16;
-        d.o.position.y = Math.sin(k * Math.PI) * 120;
-        d.o.scale.setScalar(Math.max(0.01, 1 - k * k));
+        const o = d.o;
+        if (d.t < 0.08) { const k = d.t / 0.08; o.scale.set(1 + 0.35 * k, 1 - 0.4 * k, 1 + 0.35 * k); return true; }
+        const k = (d.t - 0.08) / 0.6;
+        if (k >= 1) { this.scene.remove(o); this.disposeLooter(o); return false; }
+        o.rotation.y += dt * d.spin; o.rotation.z = k * 1.2 * Math.sign(d.spin);
+        o.position.set(d.x0 + d.dx * k, Math.sin(k * Math.PI * 0.85) * 420, d.z0 + d.dz * k);
+        const s = k < 0.15 ? 0.65 + k / 0.15 * 0.55 : 1.2 * (1 - (k - 0.15) / 0.85);
+        o.scale.setScalar(Math.max(0.01, s));
         return true;
       });
     }
@@ -810,15 +842,91 @@ window.PTD = window.PTD || {};
       }
     }
 
+    // Sparks share one material per colour and shrink out instead of fading (no per-particle material).
+    sharedGlow(color) {
+      return mat('glowS' + color, () => { const m = new T.SpriteMaterial({ map: glowTexture(), color: new T.Color(color).multiplyScalar(2.2), transparent: true, depthWrite: false, blending: T.AdditiveBlending }); m.userData.shared = true; return m; });
+    }
     burst(pos, color, n, speed, life) {
       if (this.particles.length > 900) return;
+      const m = this.sharedGlow(color);
       for (let i = 0; i < n; i++) {
-        const s = this.glowSprite(color, 26 + Math.random() * 22);
+        const s = new T.Sprite(m), size = 26 + Math.random() * 22;
+        s.scale.set(size, size, 1);
         s.position.copy(pos);
         const a = Math.random() * TAU, up = Math.random();
-        this.particles.push({ obj: s, t: 0, life: (life || 0.45) * (0.7 + Math.random() * 0.6), fade: true,
+        this.particles.push({ obj: s, t: 0, life: (life || 0.45) * (0.7 + Math.random() * 0.6), shrink: true, base: size, shrinkAll: true,
           v: new T.Vector3(Math.cos(a) * speed * (0.4 + Math.random()), speed * (0.3 + up), Math.sin(a) * speed * (0.4 + Math.random())), grav: 900 });
         this.scene.add(s);
+      }
+    }
+
+    // soft cloud puffs (normal blending) for deaths and landings
+    poof(pos, n, scale) {
+      if (this.particles.length > 900) return;
+      for (let i = 0; i < n; i++) {
+        const s = this.glowSprite('#ece6dc', (60 + Math.random() * 50) * (scale || 1), 0.8);
+        s.material.blending = T.NormalBlending; s.material.color.set('#f4efe6');
+        s.position.copy(pos).add(new T.Vector3((Math.random() - 0.5) * 60, Math.random() * 40, (Math.random() - 0.5) * 60));
+        const a = Math.random() * TAU, sp = 90 + Math.random() * 120;
+        this.particles.push({ obj: s, t: 0, life: 0.55 + Math.random() * 0.3, fade: true, grow: 1.8, base: s.scale.x,
+          v: new T.Vector3(Math.cos(a) * sp, 60 + Math.random() * 80, Math.sin(a) * sp), grav: -40 });
+        this.scene.add(s);
+      }
+    }
+
+    // pop-in floating text drawn by the renderer itself (damage numbers, banners on the board)
+    floater(pos, text, color, h) {
+      if (this.floaters.length > 60) return;
+      const key = text + color;
+      let tex = this.textCache.get(key);
+      if (!tex) { if (this.textCache.size > 300) { for (const t of this.textCache.values()) t.dispose(); this.textCache.clear(); } tex = textTexture(text, color, 56); this.textCache.set(key, tex); }
+      const s = new T.Sprite(new T.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, depthTest: false }));
+      s.position.copy(pos); s.renderOrder = 11;
+      this.scene.add(s);
+      this.floaters.push({ s, t: 0, life: 0.85, h: h || 50, aspect: tex.userData.aspect, y0: pos.y, dx: (Math.random() - 0.5) * 60 });
+    }
+    updateFloaters(dt) {
+      this.floaters = this.floaters.filter(f => {
+        f.t += dt;
+        const k = f.t / f.life;
+        if (k >= 1) { this.scene.remove(f.s); f.s.material.dispose(); return false; }
+        const pop = k < 0.12 ? 0.4 + (k / 0.12) * 0.9 : k < 0.22 ? 1.3 - (k - 0.12) / 0.1 * 0.3 : 1;
+        f.s.scale.set(f.h * f.aspect * pop, f.h * pop, 1);
+        f.s.position.y = f.y0 + (1 - Math.pow(1 - k, 3)) * 140;
+        f.s.position.x += f.dx * dt;
+        f.s.material.opacity = k > 0.6 ? 1 - (k - 0.6) / 0.4 : 1;
+        return true;
+      });
+    }
+
+    // free a looter's own (cloned) materials once it's gone; geometry is shared and stays
+    disposeLooter(o) {
+      o.traverse(n => { if (n.material && !n.material.userData.shared) n.material.dispose(); });
+    }
+
+    // tall light pillar + ring when a hand gets combined into a tower
+    pillar(x, y, color) {
+      const m = new T.Mesh(geo('pillarG', () => new T.CylinderGeometry(1, 1, 1, 24, 1, true)),
+        new T.MeshBasicMaterial({ color: new T.Color(color).multiplyScalar(2.4), transparent: true, opacity: 0.55, depthWrite: false, blending: T.AdditiveBlending, side: T.DoubleSide }));
+      m.scale.set(110, 2600, 110); m.position.copy(W2T(x, y, FELT_H + 1300));
+      this.scene.add(m);
+      this.particles.push({ obj: m, t: 0, life: 1.3, fade: true, pillar: true, base: 110 });
+      this.game.fx.push({ kind: 'ring', x, y, t: 0, life: 0.8, color, r: 520 });
+      this.burst(W2T(x, y, FELT_H + 120), color, 24, 520, 0.7);
+      this.burst(W2T(x, y, FELT_H + 60), '#ffffff', 10, 300, 0.4);
+    }
+
+    // confetti over whatever the camera is looking at
+    confetti(n) {
+      const cols = ['#ff4d6d', '#ffd34d', '#4dd2ff', '#7dff8a', '#c77dff', '#ffffff'];
+      const g = geo('confG', () => new T.PlaneGeometry(1, 1.6));
+      const span = 900 / Math.max(0.15, this.view.zoom * 3);
+      for (let i = 0; i < n; i++) {
+        const m = new T.Mesh(g, mat('conf' + (i % cols.length), () => new T.MeshBasicMaterial({ color: cols[i % cols.length], side: T.DoubleSide })));
+        const s = 14 + Math.random() * 14; m.scale.set(s, s, s);
+        m.position.copy(W2T(this.view.x + (Math.random() - 0.5) * span * 2, this.view.y + (Math.random() - 0.5) * span * 1.4, 900 + Math.random() * 900));
+        this.particles.push({ obj: m, t: 0, life: 3.5 + Math.random() * 1.5, v: new T.Vector3((Math.random() - 0.5) * 120, -120 - Math.random() * 160, (Math.random() - 0.5) * 120), grav: 0, spin: new T.Vector3(3 + Math.random() * 6, 3 + Math.random() * 6, 0), flutter: Math.random() * TAU });
+        this.scene.add(m);
       }
     }
 
@@ -865,7 +973,8 @@ window.PTD = window.PTD || {};
         }
         if (!o) continue;
         switch (f.kind) {
-          case 'text': o.position.y = 230 + k * 160; o.material.opacity = 1 - k * k; break;
+          case 'text': { const pop = k < 0.1 ? 0.5 + k / 0.1 * 0.7 : k < 0.2 ? 1.2 - (k - 0.1) / 0.1 * 0.2 : 1; o.scale.set(o.userData.w * pop, o.userData.h * pop, 1);
+            o.position.y = 230 + (1 - Math.pow(1 - k, 3)) * 170; o.material.opacity = k > 0.6 ? 1 - (k - 0.6) / 0.4 : 1; break; }
           case 'ring': { const r = (f.r || 260) * (0.3 + k * 0.7); o.scale.set(r, r, r); o.material.opacity = (1 - k) * 0.9; break; }
           case 'bolt': o.children.forEach(s => { s.material.opacity = 1 - k; }); break;
           case 'boom': { const s = f.r * (1 + k * 2.2); o.scale.set(s, s, 1); o.material.opacity = 1 - k; break; }
@@ -884,7 +993,7 @@ window.PTD = window.PTD || {};
         case 'text': {
           const tex = textTexture(f.text, f.color || '#ffffff', 56);
           const s = new T.Sprite(new T.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, depthTest: false }));
-          const h = 70; s.scale.set(h * tex.userData.aspect, h, 1);
+          const h = 70; s.scale.set(h * tex.userData.aspect, h, 1); s.userData.w = h * tex.userData.aspect; s.userData.h = h;
           s.position.copy(W2T(f.x, f.y, 230)); s.renderOrder = 10;
           S.add(s); return s;
         }
@@ -927,7 +1036,7 @@ window.PTD = window.PTD || {};
       for (const p of this.particles) {
         p.t += dt;
         const k = p.t / p.life;
-        if (k >= 1) { this.scene.remove(p.obj); if (p.obj.isSprite) p.obj.material.dispose(); continue; }
+        if (k >= 1) { this.scene.remove(p.obj); if (p.obj.material && !p.obj.material.userData.shared && (p.obj.isSprite || p.pillar)) p.obj.material.dispose(); continue; }
         if (p.v) {
           p.v.y -= (p.grav || 0) * dt;
           p.obj.position.addScaledVector(p.v, dt);
@@ -936,7 +1045,10 @@ window.PTD = window.PTD || {};
         }
         if (p.spin) { p.obj.rotation.x += p.spin.x * dt; p.obj.rotation.z += p.spin.y * dt; }
         if (p.fade && p.obj.material) p.obj.material.opacity = 1 - k;
-        if (p.shrink) p.obj.scale.setScalar(p.base * (1 - k * 0.7));
+        if (p.shrink) { const sc = p.base * (1 - k * (p.shrinkAll ? 1 : 0.7)); if (p.obj.isSprite) p.obj.scale.set(sc, sc, 1); else p.obj.scale.setScalar(sc); }
+        if (p.grow) { const sc = p.base * (1 + k * (p.grow - 1)); p.obj.scale.set(sc, sc, 1); }
+        if (p.pillar) { const r = p.base * (1 - k * 0.8); p.obj.scale.x = r; p.obj.scale.z = r; }
+        if (p.flutter != null) { p.obj.position.x += Math.sin(p.t * 3 + p.flutter) * 60 * dt; p.v.y = -120 - Math.abs(Math.sin(p.t * 2 + p.flutter)) * 80; }
         if (p.flat) p.obj.scale.set(p.base * 2.2 * (1 - k * 0.5), p.base * 0.25, p.base * 2.2 * (1 - k * 0.5));   // splatted puddle
         keep.push(p);
       }
@@ -954,8 +1066,9 @@ window.PTD = window.PTD || {};
       const pitch = Math.max(14, Math.min(85, 62 - n * 26 + (v.tilt || 0))) * Math.PI / 180;   // closer = lower, more cinematic
       const dist = this.distFor(z);
       const tx = v.x, tz = -v.y, yaw = v.yaw || 0;
-      const sh = this.shake, flat = Math.cos(pitch) * dist;
-      this.camera.position.set(tx + Math.sin(yaw) * flat + (Math.random() - 0.5) * sh, Math.sin(pitch) * dist + (Math.random() - 0.5) * sh, tz + Math.cos(yaw) * flat);
+      const sh = this.shake, flat = Math.cos(pitch) * dist, st = performance.now() / 1000;
+      const nx = Math.sin(st * 37) * 0.6 + Math.sin(st * 61 + 1.3) * 0.4, ny = Math.sin(st * 43 + 2.1) * 0.6 + Math.sin(st * 71) * 0.4;   // smooth shake, not white noise
+      this.camera.position.set(tx + Math.sin(yaw) * flat + nx * sh * 0.5, Math.sin(pitch) * dist + ny * sh * 0.5, tz + Math.cos(yaw) * flat);
       this.camera.lookAt(tx, 0, tz);
       // fog starts just past what we're looking at, however far out the camera is
       this.scene.fog.near = dist * 1.05; this.scene.fog.far = dist * 3.2;
@@ -1048,6 +1161,11 @@ window.PTD = window.PTD || {};
         this.bossLanded = false;
       } else if (type === 'leak' && d.player === me) { this.flash = 0.55; this.shake = Math.max(this.shake, 60); }
       else if (type === 'kill' && d.boss) { this.shake = Math.max(this.shake, 110); }
+      else if (type === 'waveCleared' && me && me.alive) {
+        const v = me.lane.path[me.lane.path.length - 1];   // coin fountain at your vault
+        this.coinShower(W2T(v.x, v.y, 200), 22); this.burst(W2T(v.x, v.y, 260), '#ffd34d', 26, 620, 0.8);
+        this.game.fx.push({ kind: 'ring', x: v.x, y: v.y, t: 0, life: 1.0, color: '#ffd34d', r: 900 });
+      } else if (type === 'gameOver' && me && d.winners && d.winners.indexOf(me) >= 0) { this.confetti(220); this.coinShower(W2T(this.view.x, this.view.y, 400), 30); }
       else if (type === 'towerDestroyed' && d.tower && d.tower.owner === me.id) { this.shake = Math.max(this.shake, 120); this.flash = 0.35; }
     }
 
@@ -1109,6 +1227,7 @@ window.PTD = window.PTD || {};
       this.syncShots(dt);
       this.syncFx();
       this.updateParticles(dt);
+      this.updateFloaters(dt);
 
       // ambient animation
       const t = now / 1000;

@@ -89,6 +89,19 @@ button { font: inherit; color: inherit; cursor: pointer; }
 #banner.boss { border-color: #ff5a5a; box-shadow: 0 0 40px rgba(255,60,60,0.5); top: 16%; padding: 10px 28px; }
 #banner.boss .boss-face { width: 64px; height: 64px; margin-bottom: 2px; }
 #banner.boss h2 { color: #ff7070; }
+#banner.cleared h2 { color: #ffd34d; text-shadow: 0 0 18px rgba(255,200,60,0.6); }
+#banner.combo { top: 24%; padding: 10px 30px; border-color: var(--gold); }
+#banner.combo h2 { font-size: 30px; }
+/* boss health along the top during boss waves */
+#bossbar { position: fixed; top: 78px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 6px; pointer-events: none; width: min(560px, 70vw); }
+#bossbar .bb { display: flex; align-items: center; gap: 10px; background: rgba(15,10,12,0.82); border: 2px solid #ff5a5a; border-radius: 12px; padding: 6px 12px; box-shadow: 0 0 24px rgba(255,60,60,0.35); }
+#bossbar img { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; border: 2px solid var(--gold); }
+#bossbar .bb-main { flex: 1; }
+#bossbar .bb-name { font-weight: 700; color: #ffb3b3; font-size: 14px; display: flex; justify-content: space-between; }
+#bossbar .bb-bar { position: relative; height: 12px; background: #1a1016; border: 1px solid #fff1c9; border-radius: 6px; overflow: hidden; margin-top: 4px; }
+#bossbar .bb-trail, #bossbar .bb-fill { position: absolute; left: 0; top: 0; bottom: 0; }
+#bossbar .bb-trail { background: #ffe9a8; }
+#bossbar .bb-fill { background: linear-gradient(#ff7a7a, #d63a3a); }
 @keyframes pop { from { transform: translate(-50%, -50%) scale(0.85); opacity: 0; } to { transform: translate(-50%, -50%) scale(1); opacity: 1; } }
 #toast { position: fixed; left: 50%; bottom: 190px; transform: translateX(-50%); display: flex; flex-direction: column; gap: 6px; align-items: center; pointer-events: none; }
 .toast { background: rgba(15,10,12,0.9); border: 1px solid rgba(201,160,67,0.5); padding: 6px 14px; border-radius: 8px; font-size: 14px; animation: fadeout 3.2s forwards; }
