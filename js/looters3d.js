@@ -45,6 +45,26 @@ window.PTD = window.PTD || {};
     return dollarTex;
   }
 
+  // Outfit patterns: a canvas texture tinted with the outfit colour.
+  const patterns = {};
+  function patterned(base, kind, accent) {
+    const key = base + kind + accent;
+    if (patterns[key]) return patterns[key];
+    const c = document.createElement('canvas'); c.width = c.height = 128;
+    const x = c.getContext('2d');
+    x.fillStyle = base; x.fillRect(0, 0, 128, 128);
+    x.fillStyle = accent;
+    if (kind === 'stripes') for (let i = 0; i < 128; i += 32) x.fillRect(0, i, 128, 14);
+    else if (kind === 'dots') for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) { x.beginPath(); x.arc(16 + i * 32 + (j % 2) * 16, 16 + j * 32, 7, 0, TAU); x.fill(); }
+    else if (kind === 'argyle') { for (let i = -1; i < 3; i++) for (let j = -1; j < 3; j++) { x.beginPath(); x.moveTo(i * 64 + 32, j * 64); x.lineTo(i * 64 + 64, j * 64 + 32); x.lineTo(i * 64 + 32, j * 64 + 64); x.lineTo(i * 64, j * 64 + 32); x.closePath(); if ((i + j) % 2 === 0) x.fill(); } }
+    else if (kind === 'check') { x.globalAlpha = 0.55; for (let i = 0; i < 128; i += 32) { x.fillRect(i, 0, 16, 128); x.fillRect(0, i, 128, 16); } }
+    else if (kind === 'pinstripe') for (let i = 0; i < 128; i += 16) x.fillRect(i, 0, 2, 128);
+    const t = new T.CanvasTexture(c); t.colorSpace = T.SRGBColorSpace; t.wrapS = t.wrapT = T.RepeatWrapping; t.repeat.set(2, 2);
+    const m = new T.MeshStandardMaterial({ map: t, roughness: 0.9 });
+    m.userData.shared = true;
+    return (patterns[key] = m);
+  }
+
   // part(parent, geometry, material, [sx,sy,sz], [x,y,z], [rx,ry,rz])
   function part(parent, g, m, s, p, r) {
     const o = new T.Mesh(g, m);
@@ -71,13 +91,21 @@ window.PTD = window.PTD || {};
   function mouth(ctx, head, y, z, grin) {
     ctx.detail.push(part(head, tor(), mat('#3a1010'), [0.07, 0.07, 0.07], [0, y, z], [0, 0, grin ? Math.PI : 0]));
   }
+  // cartoon extras on any face: a cheeky grin with teeth and rosy cheeks
+  function cheeky(ctx, head, y, z, sp) {
+    const m = part(head, sph(), mat('#4a0f0f'), [0.09, 0.045, 0.03], [0, y, z]);
+    ctx.detail.push(m);
+    ctx.detail.push(part(head, box(), gloss('#ffffff'), [0.1, 0.025, 0.02], [0, y + 0.015, z + 0.012]));
+    if (Math.random() < 0.5) ctx.detail.push(part(head, box(), gloss('#ffd34d'), [0.025, 0.026, 0.021], [0.03, y + 0.015, z + 0.014]));   // a gold tooth
+    for (const s of [-1, 1]) ctx.detail.push(part(head, sph(), mat('#ff8fa3', { transparent: true, opacity: 0.55 }), [0.06, 0.035, 0.02], [s * sp, y + 0.08, z - 0.02]));
+  }
 
   function humanHead(ctx, head, o) {
     part(head, sph(), ctx.skinM, [0.3, 0.33, 0.3], [0, 0, 0]).castShadow = true;
     part(head, sph(), ctx.skinM, [0.055, 0.07, 0.06], [0, -0.02, 0.3]);                    // nose
     for (const s of [-1, 1]) part(head, sph(), ctx.skinM, [0.05, 0.08, 0.04], [s * 0.3, 0, 0]);   // ears
-    eyes(ctx, head, { y: 0.06, z: 0.25, sp: 0.11, size: 0.07, iris: o.iris || '#4a3020', brow: o.hair || '#2b1d12', angry: o.angry });
-    mouth(ctx, head, -0.13, 0.27, o.grin);
+    eyes(ctx, head, { y: 0.06, z: 0.25, sp: 0.11, size: 0.085, iris: o.iris || '#4a3020', brow: o.hair || '#2b1d12', angry: o.angry });
+    cheeky(ctx, head, -0.13, 0.28, 0.17);
     if (o.hair) part(head, sph(), fabric(o.hair), [0.31, 0.2, 0.31], [0, 0.17, -0.03]);
     if (o.beard) part(head, sph(), fabric(o.beard), [0.24, 0.16, 0.16], [0, -0.2, 0.17]);
     if (o.mustache) ctx.detail.push(part(head, cap(), fabric(o.mustache), [0.03, 0.12, 0.03], [0, -0.08, 0.3], [0, 0, Math.PI / 2]));
@@ -93,7 +121,8 @@ window.PTD = window.PTD || {};
       part(ear, disc(), skin(o.inner || '#f4a6b8'), [(o.ear || 0.19) * 0.65, 0.8, (o.ear || 0.19) * 0.65], [0, 0, 0.012], [Math.PI / 2, 0, s * 0.3]);
       for (let w = 0; w < 3; w++) ctx.detail.push(part(head, cyl(), mat('#eeeeee'), [0.004, 0.3, 0.004], [s * 0.16, -0.06 + w * 0.03, 0.4], [0, 0, s * (1.35 + w * 0.15)]));
     }
-    eyes(ctx, head, { y: 0.08, z: 0.22, sp: 0.12, size: 0.07, iris: '#111111', tall: 1.2 });
+    eyes(ctx, head, { y: 0.08, z: 0.22, sp: 0.12, size: 0.085, iris: '#111111', tall: 1.2, brow: '#2b2b2b', angry: true });
+    cheeky(ctx, head, -0.16, 0.36, 0.17);
   }
 
   function canineHead(ctx, head, o) {
@@ -105,7 +134,8 @@ window.PTD = window.PTD || {};
       part(head, cone(), ctx.furM, [0.1, 0.24, 0.06], [s * 0.17, 0.32, -0.02], [0, 0, -s * 0.25]);
       part(head, cone(), skin(o.inner || '#e8b7a0'), [0.055, 0.16, 0.03], [s * 0.17, 0.3, 0.015], [0, 0, -s * 0.25]);
     }
-    eyes(ctx, head, { y: 0.08, z: 0.22, sp: 0.12, size: 0.065, iris: o.iris || '#7a4a12', brow: o.brow, angry: true });
+    eyes(ctx, head, { y: 0.08, z: 0.22, sp: 0.12, size: 0.08, iris: o.iris || '#7a4a12', brow: o.brow || '#3b2a1a', angry: true });
+    cheeky(ctx, head, -0.2, 0.36, 0.18);
   }
 
   function sharkHead(ctx, head, o) {
@@ -133,7 +163,7 @@ window.PTD = window.PTD || {};
   // Upright two-legged body. Returns anim parts.
   function biped(ctx, o) {
     const rig = ctx.rig;
-    const top = fabric(o.top), bottom = fabric(o.bottom || '#3a3a46'), shoes = mat(o.shoes || '#2a1d14', { roughness: 0.45 });
+    const top = o.pattern ? patterned(o.top, o.pattern[0], o.pattern[1]) : fabric(o.top), bottom = fabric(o.bottom || '#3a3a46'), shoes = mat(o.shoes || '#2a1d14', { roughness: 0.45 });
     ctx.flash.push(ctx.topM = top.clone());
     const legs = [], arms = [];
     for (const s of [-1, 1]) {
@@ -335,31 +365,31 @@ window.PTD = window.PTD || {};
   // ------------------------------------------------------------------ catalogue
   // Each looter (by level name) -> body plan, head, colours, outfit and props.
   const SPECS = {
-    'Sneak Mouse': { body: 'biped', head: 'rodent', fur: '#9aa0a6', top: '#2c3e50', bottom: '#1f2a36', mask: '#111111', hat: ['beanie', '#1c1c1c'], tail: 'thin', tailC: '#f4a6b8' },
-    'Alley Rat': { body: 'biped', head: 'rodent', fur: '#7d6b5d', top: '#8e5b3a', vest: '#5c3a21', bottom: '#3b3b3b', hat: ['bandana', '#c0392b'], tail: 'thin', tailC: '#d98c8c', ear: 0.15 },
+    'Sneak Mouse': { pattern: ['stripes', '#ecf0f1'], body: 'biped', head: 'rodent', fur: '#9aa0a6', top: '#2c3e50', bottom: '#1f2a36', mask: '#111111', hat: ['beanie', '#1c1c1c'], tail: 'thin', tailC: '#f4a6b8' },
+    'Alley Rat': { pattern: ['check', '#5c3a21'], body: 'biped', head: 'rodent', fur: '#7d6b5d', top: '#8e5b3a', vest: '#5c3a21', bottom: '#3b3b3b', hat: ['bandana', '#c0392b'], tail: 'thin', tailC: '#d98c8c', ear: 0.15 },
     'Coin Crab': { body: 'crab', shell: '#e0703a' },
     'Sock Goblin': { body: 'biped', head: 'goblin', skin: '#6dbb63', top: '#8d6e63', belt: '#4e342e', bottom: '#5d4037', hat: ['sock', '#f7f7f7', '#e74c3c'] },
-    'Rag Raccoon': { body: 'biped', head: 'rodent', fur: '#6b6f78', inner: '#2b2b2b', nose: '#111111', top: '#7f8c8d', bottom: '#4a4a4a', mask: '#1f2228', tail: 'ringed', tailC: '#6b6f78', ear: 0.14 },
-    'Jackal Pup': { body: 'biped', head: 'canine', fur: '#c9944a', top: '#3b2a1a', bottom: '#5a4632', chain: true, tail: 'bushy', tailC: '#b07d3a' },
+    'Rag Raccoon': { pattern: ['stripes', '#2c3e50'], body: 'biped', head: 'rodent', fur: '#6b6f78', inner: '#2b2b2b', nose: '#111111', top: '#7f8c8d', bottom: '#4a4a4a', mask: '#1f2228', tail: 'ringed', tailC: '#6b6f78', ear: 0.14 },
+    'Jackal Pup': { pattern: ['dots', '#e67e22'], body: 'biped', head: 'canine', fur: '#c9944a', top: '#3b2a1a', bottom: '#5a4632', chain: true, tail: 'bushy', tailC: '#b07d3a' },
     'Pocket Weasel': { body: 'biped', head: 'canine', fur: '#a0522d', muzzle: '#ffe8c2', coat: '#2f2f2f', top: '#444', bottom: '#2b2b2b', mask: '#111', tail: 'bushy', tailC: '#8b4513', hat: ['fedora', '#3a3a3a'] },
-    'Brute Twins': { body: 'biped', head: 'human', skin: '#8a6fd1', top: '#ecf0f1', bottom: '#2c3e50', wide: 1.35, chain: true, hair: '#1a1a1a', angry: true, horns: true, knuckles: true },
-    'Card Shark': { body: 'biped', head: 'shark', skin: '#5b8fb9', top: '#ecf0f1', vest: '#1b2631', bottom: '#1b2631', tie: '#c0392b', hat: ['visor'], tail: 'fin', prop: 'coin' },
-    'Iron Knuckle': { body: 'biped', head: 'human', skin: '#e0ac8a', top: '#d35400', bottom: '#d35400', belt: '#2c3e50', hat: ['helm', '#7f8c8d'], knuckles: true, angry: true, beard: '#3b2a1a' },
-    'Velvet Fox': { body: 'biped', head: 'canine', fur: '#d9622b', muzzle: '#fff3e0', top: '#5b2c6f', vest: '#7d3c98', bottom: '#2c2c2c', tail: 'bushy', tailC: '#d9622b', tie: '#f5d76e' },
+    'Brute Twins': { pattern: ['stripes', '#e74c3c'], body: 'biped', head: 'human', skin: '#8a6fd1', top: '#ecf0f1', bottom: '#2c3e50', wide: 1.35, chain: true, hair: '#1a1a1a', angry: true, horns: true, knuckles: true },
+    'Card Shark': { pattern: ['pinstripe', '#2c3e50'], body: 'biped', head: 'shark', skin: '#5b8fb9', top: '#ecf0f1', vest: '#1b2631', bottom: '#1b2631', tie: '#c0392b', hat: ['visor'], tail: 'fin', prop: 'coin' },
+    'Iron Knuckle': { pattern: ['stripes', '#2c3e50'], body: 'biped', head: 'human', skin: '#e0ac8a', top: '#d35400', bottom: '#d35400', belt: '#2c3e50', hat: ['helm', '#7f8c8d'], knuckles: true, angry: true, beard: '#3b2a1a' },
+    'Velvet Fox': { pattern: ['dots', '#f5d76e'], body: 'biped', head: 'canine', fur: '#d9622b', muzzle: '#fff3e0', top: '#5b2c6f', vest: '#7d3c98', bottom: '#2c2c2c', tail: 'bushy', tailC: '#d9622b', tie: '#f5d76e' },
     'Silk Viper': { body: 'snake', skin: '#2e9e6b', accent: '#f1c40f' },
     'Masked Bandit': { body: 'biped', head: 'human', skin: '#d8a27a', top: '#34495e', bottom: '#1c2833', cape: '#111111', faceMask: '#111111', hat: ['cowboy', '#111111'], belt: '#5d4037', angry: true },
     'Fortune Teller': { body: 'biped', head: 'human', skin: '#c68e6e', top: '#8e44ad', robe: true, hat: ['hood', '#6c3483'], prop: 'crystal', hair: '#2b1d12', iris: '#9b59b6' },
     'Gold Moth': { body: 'moth', skin: '#e6b800' },
-    'Clockwork Fixer': { body: 'biped', head: 'human', skin: '#e0ac8a', top: '#b08d57', bottom: '#5d4037', belt: '#3e2723', goggles: '#7fdfff', gear: true, prop: 'wrench', mustache: '#5d4037', hair: '#5d4037' },
-    'Heartbreaker': { body: 'biped', head: 'human', skin: '#f0c8a8', top: '#e84393', bottom: '#2d3436', hat: ['hood', '#fd79a8'], hearts: true, grin: true, hair: '#6d214f' },
-    'Desperado': { body: 'biped', head: 'human', skin: '#c68e6e', top: '#a1673f', poncho: '#c0392b', bottom: '#5d4037', hat: ['cowboy', '#6e4b2a', '#2d2d2d'], beard: '#2b1d12', angry: true },
+    'Clockwork Fixer': { pattern: ['check', '#8a6d3b'], body: 'biped', head: 'human', skin: '#e0ac8a', top: '#b08d57', bottom: '#5d4037', belt: '#3e2723', goggles: '#7fdfff', gear: true, prop: 'wrench', mustache: '#5d4037', hair: '#5d4037' },
+    'Heartbreaker': { pattern: ['dots', '#ffffff'], body: 'biped', head: 'human', skin: '#f0c8a8', top: '#e84393', bottom: '#2d3436', hat: ['hood', '#fd79a8'], hearts: true, grin: true, hair: '#6d214f' },
+    'Desperado': { pattern: ['check', '#5d4037'], body: 'biped', head: 'human', skin: '#c68e6e', top: '#a1673f', poncho: '#c0392b', bottom: '#5d4037', hat: ['cowboy', '#6e4b2a', '#2d2d2d'], beard: '#2b1d12', angry: true },
     'Loan Shark': { body: 'biped', head: 'shark', skin: '#476f95', top: '#f8f9f9', coat: '#ecf0f1', bottom: '#f8f9f9', shirtV: '#2c3e50', chain: true, tail: 'fin', prop: 'coin' },
     'Snake-Oil Seller': { body: 'biped', head: 'human', skin: '#d8b48a', top: '#6a8f3a', coat: '#4d6b27', bottom: '#2f3b1c', hat: ['top', '#2a2a2a', '#e8d27a'], prop: 'bottle', mustache: '#3b2a1a', grin: true },
-    'Shell Gamer': { body: 'biped', head: 'human', skin: '#e0ac8a', top: '#fdf6e3', vest: '#4aa3a2', bottom: '#2c3e50', hat: ['fedora', '#4aa3a2', '#1d3c3c'], prop: 'cups', grin: true, hair: '#2b1d12' },
+    'Shell Gamer': { pattern: ['argyle', '#4aa3a2'], body: 'biped', head: 'human', skin: '#e0ac8a', top: '#fdf6e3', vest: '#4aa3a2', bottom: '#2c3e50', hat: ['fedora', '#4aa3a2', '#1d3c3c'], prop: 'cups', grin: true, hair: '#2b1d12' },
     'Silver Tongue': { body: 'biped', head: 'human', skin: '#e8cfc0', top: '#bdc3c7', robe: true, hat: ['hood', '#95a5a6'], grin: true, iris: '#7f8c8d', chain: true },
     'Vault Cracker': { body: 'biped', head: 'human', skin: '#d8a27a', top: '#2f3640', bottom: '#2f3640', glove: '#111111', hat: ['helm', '#e1b12c'], lamp: true, prop: 'stethoscope', faceMask: '#1e272e' },
-    'Tycoon': { body: 'biped', head: 'human', skin: '#f0c8a8', top: '#273c75', coat: '#1e2a5a', bottom: '#273c75', shirtV: '#ffffff', tie: '#e1b12c', wide: 1.3, hat: ['top', '#111111', '#e1b12c'], prop: 'cane', monocle: true, mustache: '#ecf0f1', hair: '#ecf0f1' },
-    'Tax Collector': { body: 'biped', head: 'human', skin: '#e8cfc0', top: '#57606f', coat: '#4b5260', bottom: '#2f3542', shirtV: '#ffffff', tie: '#2f3542', hat: ['bowler', '#2f3542'], prop: 'clipboard', iris: '#2c3e50', angry: true },
+    'Tycoon': { pattern: ['pinstripe', '#e1b12c'], body: 'biped', head: 'human', skin: '#f0c8a8', top: '#273c75', coat: '#1e2a5a', bottom: '#273c75', shirtV: '#ffffff', tie: '#e1b12c', wide: 1.3, hat: ['top', '#111111', '#e1b12c'], prop: 'cane', monocle: true, mustache: '#ecf0f1', hair: '#ecf0f1' },
+    'Tax Collector': { pattern: ['pinstripe', '#ced6e0'], body: 'biped', head: 'human', skin: '#e8cfc0', top: '#57606f', coat: '#4b5260', bottom: '#2f3542', shirtV: '#ffffff', tie: '#2f3542', hat: ['bowler', '#2f3542'], prop: 'clipboard', iris: '#2c3e50', angry: true },
   };
 
   // How each looter moves, and the little move it does now and then.
@@ -503,7 +533,7 @@ window.PTD = window.PTD || {};
     if (PTD.Toon) {
       const before = new Map();
       rig.traverse(o => { if (o.isMesh) before.set(o, o.material); });
-      PTD.Toon.cartoonize(rig, { width: 2.6, onlyShadowCasters: true });
+      PTD.Toon.cartoonize(rig, { width: 2.6, onlyShadowCasters: true, style: { bright: 0.78, rim: '#ffd9a0' } });
       const swap = new Map();
       for (const [o, m] of before) if (o.material !== m) swap.set(m, o.material);
       ctx.flash = ctx.flash.map(m => swap.get(m) || m).filter(m => m.emissive);

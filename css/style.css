@@ -103,7 +103,9 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .logo h1 small { display: block; font-size: 22px; letter-spacing: 0.25em; text-transform: uppercase; text-align: center; color: #f3e6c2; text-shadow: none; margin-top: -6px; }
 .tagline { text-align: center; color: #f3e6c2; line-height: 1.5; }
 .field { display: block; margin: 14px 0; font-weight: 600; }
-.field input { display: block; margin-top: 6px; width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.2); background: #1d1519; color: var(--ink); font: inherit; }
+.field.check { display: flex; align-items: center; gap: 8px; font-weight: 600; }
+.field.check input { width: 18px; height: 18px; margin: 0; }
+.field input:not([type=checkbox]) { display: block; margin-top: 6px; width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.2); background: #1d1519; color: var(--ink); font: inherit; }
 .seg { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
 .seg button { flex: 1; padding: 8px 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.18); background: #1d1519; font-weight: 600; min-width: 44px; }
 .seg button.on { background: linear-gradient(#c9a043, #8f6d22); color: #1b1305; border-color: #ffe08a; }

@@ -6,7 +6,7 @@
 
   let game = null, demo = null, renderer = null, net = null;   // net: PTD.Net.Host or Client while online
   const ui = { shellWarned: 0, ghost: null, hoverTower: null, inspect: null, speed: 1, paused: false, foldArmed: 0, keys: {}, winners: new Set() };
-  const settings = { mode: 1, rivals: 3, name: 'You', gfx: 'ultra' };
+  const settings = { mode: 1, rivals: 3, name: 'You', gfx: 'ultra', invertMouse: true };
   try { Object.assign(settings, JSON.parse(localStorage.getItem('ptd.settings') || '{}')); } catch (e) { /* storage optional */ }
   const saveSettings = () => { try { localStorage.setItem('ptd.settings', JSON.stringify(settings)); } catch (e) { /* ignore */ } };
 
@@ -28,6 +28,8 @@
   refreshModeDesc();
   const GFX = [{ label: '3D Ultra', value: 'ultra' }, { label: '3D Fast', value: 'fast' }, { label: 'Classic 2D', value: '2d' }];
   buildSeg($('in-gfx'), GFX, settings.gfx, v => { settings.gfx = v; saveSettings(); if (!game) startDemo(); });
+  $('in-invert').checked = !!settings.invertMouse;
+  $('in-invert').onchange = () => { settings.invertMouse = $('in-invert').checked; saveSettings(); };
 
   // Picks the renderer for the current graphics setting (falls back to 2D without WebGL2).
   function makeRenderer(g) {
@@ -379,10 +381,11 @@
       const dx = e.clientX - drag.sx, dy = e.clientY - drag.sy;
       if (!drag.moved && Math.hypot(dx, dy) > 6) drag.moved = true;
       if (drag.moved) {
-        const mx = e.clientX - drag.lx, my = e.clientY - drag.ly;
+        const inv = settings.invertMouse ? -1 : 1;
+        const mx = (e.clientX - drag.lx) * inv, my = (e.clientY - drag.ly) * inv;
         if (drag.button === 2 && renderer.rotateBy) renderer.rotateBy(mx * 0.006, -my * 0.12);
         else if (renderer.panBy) renderer.panBy(mx, my);
-        else { renderer.cam.x = drag.camX - dx / renderer.cam.zoom; renderer.cam.y = drag.camY + dy / renderer.cam.zoom; }
+        else { renderer.cam.x = drag.camX - dx * inv / renderer.cam.zoom; renderer.cam.y = drag.camY + dy * inv / renderer.cam.zoom; }
       }
       drag.lx = e.clientX; drag.ly = e.clientY;
     }

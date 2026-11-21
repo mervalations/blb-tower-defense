@@ -151,7 +151,7 @@ PTD.Art = (function () {
         if (v === 0) {
           // casino felt with a faint diamond lattice
           const lat = ((Math.abs(((wx + wy) % 512 + 512) % 512 - 256) < 6) || (Math.abs(((wx - wy) % 512 + 512) % 512 - 256) < 6)) ? 8 : 0;
-          r = 22 + n + lat; gg = 92 + n + lat * 1.5; b = 58 + n + lat;
+          r = 52 + n + lat; gg = 150 + n + lat * 1.5; b = 82 + n + lat;
         } else if (v === 1) {
           // carpet runner; gold trim where it meets the felt
           const fx = (wx - map.origin) / map.cell - cx, fy = (wy - map.origin) / map.cell - cy;

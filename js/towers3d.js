@@ -52,17 +52,31 @@ window.PTD = window.PTD || {};
     return toonRamp;
   }
   const toonCache = new Map();
-  function toon(m) {
+  // style: { bright (colour scale), rim (rim-light colour or null) }
+  function toon(m, style) {
     if (!m || !m.isMeshStandardMaterial || m.transparent) return m;
-    if (toonCache.has(m.uuid)) return toonCache.get(m.uuid);
+    style = style || {};
+    const key = m.uuid + '|' + (style.bright || '') + '|' + (style.rim || '');
+    if (toonCache.has(key)) return toonCache.get(key);
     const own = !m.userData.shared;   // a per-object clone stays per-object
-    // metals keep a little extra brightness so gold still reads as gold
     // toon materials skip PBR energy loss, so scale down to stay under the bloom threshold
-    const c = m.color.clone().multiplyScalar(m.metalness > 0.5 ? 0.62 : 0.5);
+    const c = m.color.clone().multiplyScalar(style.bright || (m.metalness > 0.5 ? 0.62 : 0.5));
+    if (style.bright) { const mx = Math.max(c.r, c.g, c.b); if (mx > 0.62) c.multiplyScalar(0.62 / mx); }   // whites stay white, not glowing
+    if (style.bright) { const hsl = {}; c.getHSL(hsl); c.setHSL(hsl.h, Math.min(1, hsl.s * 1.25), hsl.l); }
     const t = new T.MeshToonMaterial({ color: c, map: m.map || null, gradientMap: ramp(), emissive: m.emissive ? m.emissive.clone() : new T.Color(0), emissiveMap: m.emissiveMap || null });
+    if (style.rim) {
+      // a coloured fresnel rim so characters pop against the dark table
+      const rim = new T.Color(style.rim);
+      t.onBeforeCompile = (sh) => {
+        sh.uniforms.rimColor = { value: rim };
+        sh.fragmentShader = 'uniform vec3 rimColor;\n' + sh.fragmentShader.replace('#include <dithering_fragment>',
+          '#include <dithering_fragment>\n float rimK = pow(1.0 - abs(dot(normalize(vNormal), normalize(vViewPosition))), 2.5);\n gl_FragColor.rgb += rimColor * rimK * 0.55;');
+      };
+      t.customProgramCacheKey = () => 'rim';
+    }
     if (own) return t;
     t.userData.shared = true;
-    toonCache.set(m.uuid, t);
+    toonCache.set(key, t);
     return t;
   }
   const outlineMats = {};
@@ -86,9 +100,9 @@ window.PTD = window.PTD || {};
     root.traverse(o => { if (o.isMesh && !o.userData.isOutline) solids.push(o); });
     for (const o of solids) {
       if (opts.skip && opts.skip(o)) continue;
-      if (Array.isArray(o.material)) { o.material = o.material.map(toon); continue; }
+      if (Array.isArray(o.material)) { o.material = o.material.map(m => toon(m, opts.style)); continue; }
       const basic = o.material.isMeshBasicMaterial;
-      o.material = toon(o.material);
+      o.material = toon(o.material, opts.style);
       if (basic || o.material.transparent || o.material.blending === T.AdditiveBlending) continue;
       if (opts.onlyShadowCasters && !o.castShadow) continue;
       const hull = new T.Mesh(o.geometry, outline(opts.width));

@@ -160,11 +160,18 @@ window.PTD = window.PTD || {};
     return cache.env;
   }
 
+  function toonRamp() {
+    if (cache.tex.ramp) return cache.tex.ramp;
+    const t = new T.DataTexture(new Uint8Array([150, 150, 150, 255, 210, 210, 210, 255, 255, 255, 255, 255]), 3, 1, T.RGBAFormat);
+    t.minFilter = t.magFilter = T.NearestFilter; t.generateMipmaps = false; t.needsUpdate = true;
+    return (cache.tex.ramp = t);
+  }
+
   function carpetTexture() {
     if (cache.tex.carpet) return cache.tex.carpet;
     const c = document.createElement('canvas'); c.width = c.height = 256;
     const x = c.getContext('2d');
-    x.fillStyle = '#3a0d16'; x.fillRect(0, 0, 256, 256);
+    x.fillStyle = '#c84a5a'; x.fillRect(0, 0, 256, 256);
     x.strokeStyle = 'rgba(214,170,72,0.35)'; x.lineWidth = 4;
     for (let i = 0; i < 2; i++) for (let j = 0; j < 2; j++) {
       const cx = 64 + i * 128, cy = 64 + j * 128;
@@ -198,7 +205,7 @@ window.PTD = window.PTD || {};
       c = clamp((c - 0.5) * 1.04 + 0.5, 0.0, 1.0);                 // contrast
 
       vec2 d = vUv - 0.5; float v = smoothstep(0.85, 0.25, length(d * vec2(1.1, 1.0)));
-      c *= mix(0.55, 1.0, v);
+      c *= mix(0.82, 1.0, v);
       c = mix(c, flashColor, flash * (1.0 - v) * 0.9);
       vec3 o = pow(c, vec3(1.0 / 2.2));
       float n = fract(sin(dot(vUv * 913.7, vec2(12.9898, 78.233))) * 43758.5453);
@@ -213,10 +220,10 @@ window.PTD = window.PTD || {};
       this.quad = new T.Mesh(new T.PlaneGeometry(2, 2));
       this.scene.add(this.quad);
       const sh = (fs, uniforms) => new T.ShaderMaterial({ vertexShader: VS, fragmentShader: fs, uniforms, depthTest: false, depthWrite: false });
-      this.bright = sh(BRIGHT_FS, { tDiffuse: { value: null }, threshold: { value: 1.0 } });
+      this.bright = sh(BRIGHT_FS, { tDiffuse: { value: null }, threshold: { value: 1.25 } });
       this.blur = sh(BLUR_FS, { tDiffuse: { value: null }, dir: { value: new T.Vector2() } });
       this.comp = sh(COMP_FS, { tScene: { value: null }, tB1: { value: null }, tB2: { value: null }, strength: { value: 1.0 },
-        exposure: { value: 0.82 }, flash: { value: 0 }, flashColor: { value: new T.Color(0.9, 0.05, 0.05) } });
+        exposure: { value: 0.95 }, flash: { value: 0 }, flashColor: { value: new T.Color(0.9, 0.05, 0.05) } });
       this.bloom = true;
     }
     setSize(w, h) {
@@ -285,13 +292,13 @@ window.PTD = window.PTD || {};
     buildScene() {
       const g = this.game, map = g.map;
       const S = this.scene = new T.Scene();
-      S.background = new T.Color(0x07050a);
-      S.fog = new T.Fog(0x07050a, 9000, 30000);
+      S.background = new T.Color(0xf3c9a8);
+      S.fog = new T.Fog(0xf3c9a8, 9000, 30000);
       S.environment = buildEnvironment(this.gl);
 
       // light: warm key light with shadows + cool fill
-      S.add(new T.HemisphereLight(0xffe2c0, 0x120e18, 0.18));
-      const key = this.key = new T.DirectionalLight(0xffe6c4, 0.85);
+      S.add(new T.HemisphereLight(0xfff4e0, 0x8a6a8a, 0.9));
+      const key = this.key = new T.DirectionalLight(0xfff1d6, 1.25);
       key.castShadow = this.quality === 'high';
       key.shadow.mapSize.set(this.quality === 'high' ? 4096 : 1024, this.quality === 'high' ? 4096 : 1024);
       key.shadow.bias = -0.0004; key.shadow.normalBias = 4;
@@ -303,16 +310,16 @@ window.PTD = window.PTD || {};
       const bc = PTD.Art.boardCanvas(map, g.players, 6);
       if (PTD.Scenery3D) PTD.Scenery3D.decorateBoard(bc.canvas.getContext('2d'), bc.px, map, 6);
       const board = this.boardTex = canvasTex(bc.canvas);
-      const top = new T.Mesh(new T.PlaneGeometry(size, size), new T.MeshStandardMaterial({ map: board, roughness: 0.92, metalness: 0, envMapIntensity: 0.15, color: '#a6aaa4' }));
+      const top = new T.Mesh(new T.PlaneGeometry(size, size), new T.MeshToonMaterial({ map: board, color: '#d8f0d8', gradientMap: toonRamp() }));
       top.rotation.x = -Math.PI / 2; top.receiveShadow = true;
       S.add(top);
-      const wood = mat('lacquer', () => new T.MeshPhysicalMaterial({ color: '#8a4a2a', map: woodTexture(), roughness: 0.38, metalness: 0, clearcoat: 1, clearcoatRoughness: 0.12 }));
+      const wood = mat('lacquer', () => new T.MeshToonMaterial({ color: '#c97a3e', map: woodTexture(), gradientMap: toonRamp() }));
       const half = size / 2, rimW = 420, rimH = 160;
       [[0, half + rimW / 2, size + rimW * 2, rimW], [0, -half - rimW / 2, size + rimW * 2, rimW], [half + rimW / 2, 0, rimW, size], [-half - rimW / 2, 0, rimW, size]].forEach(([x, y, w, d]) => {
         const m = new T.Mesh(new T.BoxGeometry(w, rimH + 900, d), wood);
         m.position.copy(W2T(x, y, rimH / 2 - 450)); m.receiveShadow = true; S.add(m);
       });
-      const floor = new T.Mesh(new T.PlaneGeometry(90000, 90000), new T.MeshStandardMaterial({ map: carpetTexture(), roughness: 1, envMapIntensity: 0.1, color: '#9a8a8a' }));
+      const floor = new T.Mesh(new T.PlaneGeometry(90000, 90000), new T.MeshToonMaterial({ map: carpetTexture(), color: '#ffffff', gradientMap: toonRamp() }));
       floor.rotation.x = -Math.PI / 2; floor.position.y = -900; floor.receiveShadow = true;
       S.add(floor);
 
@@ -357,7 +364,7 @@ window.PTD = window.PTD || {};
     buildFelt(boardTex) {
       const map = this.game.map, cell = map.cell, size = map.size * cell, org = map.origin;
       const rects = this.rectsOf(0);
-      const m = new T.MeshStandardMaterial({ map: boardTex, roughness: 0.95, metalness: 0, envMapIntensity: 0.15, color: '#a6aaa4' });
+      const m = new T.MeshToonMaterial({ map: boardTex, color: '#d8f0d8', gradientMap: toonRamp() });
       m.onBeforeCompile = (sh) => {
         sh.vertexShader = 'varying float vSide;\n' + sh.vertexShader.replace('#include <uv_vertex>', `#include <uv_vertex>
           { vec4 wp = modelMatrix * instanceMatrix * vec4(position, 1.0);
@@ -365,7 +372,7 @@ window.PTD = window.PTD || {};
             vSide = 1.0 - step(0.5, abs(normal.y)); }`);
         // the plateau's sides are plain dark felt rather than a stretched copy of the edge pixels
         sh.fragmentShader = 'varying float vSide;\n' + sh.fragmentShader.replace('#include <map_fragment>',
-          '#include <map_fragment>\n diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.035, 0.16, 0.085), vSide);');
+          '#include <map_fragment>\n diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.09, 0.42, 0.2), vSide);');
       };
       const mesh = new T.InstancedMesh(new T.BoxGeometry(1, 1, 1), m, rects.length);
       const d = new T.Object3D();
@@ -406,9 +413,9 @@ window.PTD = window.PTD || {};
         return !(Math.abs(cx) < 700 && Math.abs(cy) < 700) && !(edge && (r.x1 - r.x0 > 300 || r.y1 - r.y0 > 300));
       });
       const H = 150;
-      const lacquer = mat('lacquerWall', () => new T.MeshPhysicalMaterial({ color: '#7a3c22', map: woodTexture(), roughness: 0.35, clearcoat: 1, clearcoatRoughness: 0.1 }));
+      const lacquer = mat('lacquerWall', () => new T.MeshToonMaterial({ color: '#8a4a28', map: woodTexture(), gradientMap: toonRamp() }));
       const body = new T.InstancedMesh(new T.BoxGeometry(1, 1, 1), lacquer, keep.length);
-      const cap = new T.InstancedMesh(new T.BoxGeometry(1, 1, 1), mat('lacquerCap', () => new T.MeshPhysicalMaterial({ color: '#3a1a0e', roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.1 })), keep.length);
+      const cap = new T.InstancedMesh(new T.BoxGeometry(1, 1, 1), mat('lacquerCap', () => new T.MeshToonMaterial({ color: '#6e3a1e', gradientMap: toonRamp() })), keep.length);
       const d = new T.Object3D();
       keep.forEach((r, i) => {
         const w = (r.x1 - r.x0) * cell, h = (r.y1 - r.y0) * cell;
@@ -496,7 +503,7 @@ window.PTD = window.PTD || {};
         // a soft visible beam of light under each lamp
         const shaft = new T.Mesh(new T.CylinderGeometry(330, 1100, 3200, 40, 1, true), new T.MeshBasicMaterial({ map: shaftTexture(), color: new T.Color('#ffd9a0').multiplyScalar(0.03), transparent: true, depthWrite: false, blending: T.AdditiveBlending, side: T.DoubleSide, fog: false }));
         shaft.position.copy(W2T(lx, ly, 1650)); S.add(shaft);
-        const spot = new T.SpotLight(0xffd9a0, 1.1, 9000, 0.7, 0.75, 0);
+        const spot = new T.SpotLight(0xffd9a0, 0.45, 9000, 0.7, 0.75, 0);
         spot.position.copy(W2T(lx, ly, 3100)); spot.target.position.copy(W2T(lx, ly, 0));
         S.add(spot); S.add(spot.target);
       }
@@ -594,7 +601,7 @@ window.PTD = window.PTD || {};
       const R = c.radius;
       const root = new T.Group();
       const ch = PTD.Looters3D.build(c.def);
-      const holder = new T.Group(); holder.scale.setScalar(R * 1.25); holder.add(ch.rig); root.add(holder);
+      const holder = new T.Group(); holder.scale.setScalar(R * 1.55); holder.add(ch.rig); root.add(holder);
       this.addHealthBar(root, R * 3.6, 100);
       root.userData = { rig: holder, anim: ch.anim, flash: ch.flash, detail: ch.detail, lastHp: c.hp, hitT: 0 };
       this.scene.add(root);
@@ -659,6 +666,22 @@ window.PTD = window.PTD || {};
         ud.lastHp = c.hp;
         ud.hitT = Math.max(0, ud.hitT - dt);
         ud.anim(t + c.phaseOff, moving, dt, { speed: c.slowF || 1, hit: ud.hitT / 0.12, stun: c.stunT > 0, slow: c.slowF < 1 });
+        // little dust puffs at their feet, and the odd gold glint from the loot
+        ud.fxT = (ud.fxT || Math.random() * 0.4) - dt;
+        if (moving && ud.fxT <= 0 && this.particles.length < 700 && this.view.zoom > 0.08) {
+          ud.fxT = 0.28 + Math.random() * 0.2;
+          const puff = this.glowSprite('#b8a48a', 30 + Math.random() * 20, 0.35);
+          puff.material.blending = T.NormalBlending;
+          puff.position.set(o.position.x + (Math.random() - 0.5) * 30, 12, o.position.z + (Math.random() - 0.5) * 30);
+          this.scene.add(puff);
+          this.particles.push({ obj: puff, t: 0, life: 0.6, fade: true, v: new T.Vector3((Math.random() - 0.5) * 40, 40, (Math.random() - 0.5) * 40), grav: 0, shrink: false });
+          if (Math.random() < 0.3) {
+            const gl = this.glowSprite('#ffe27a', 26, 1);
+            gl.position.set(o.position.x, c.radius * 2.4, o.position.z);
+            this.scene.add(gl);
+            this.particles.push({ obj: gl, t: 0, life: 0.35, fade: true, shrink: true, base: 26 });
+          }
+        }
         const fr = ud.hitT > 0 ? 0.9 : c.slowF < 1 ? 0.05 : 0, fg = ud.hitT > 0 ? 0.9 : c.slowF < 1 ? 0.18 : 0, fb = ud.hitT > 0 ? 0.9 : c.slowF < 1 ? 0.45 : 0;
         for (const m of ud.flash) m.emissive.setRGB(fr, fg, fb);
         if (ud.detail) { const show = this.view.zoom > 0.085; if (ud.detailOn !== show) { ud.detailOn = show; for (const d of ud.detail) d.visible = show; } }
