@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Poker TD</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<canvas id="view"></canvas>
+
+<div id="hud" class="hidden">
+  <div id="topbar">
+    <div class="tb-block"><span class="tb-label">Level</span><span id="tb-level">1 / 30</span></div>
+    <div class="tb-block tb-phase"><span id="tb-phase">Play a Hand</span><span id="tb-timer">45</span></div>
+    <div class="tb-block tb-next"><span class="tb-label" id="tb-next-label">Next</span><span id="tb-next"></span></div>
+    <div class="tb-block tb-gold"><span class="tb-coin">$</span><span id="tb-gold">25</span></div>
+    <div class="tb-tools">
+      <button id="btn-speed" title="Game speed (+/-)">1x</button>
+      <button id="btn-pause" title="Pause (P)">II</button>
+      <button id="btn-mute" title="Sound (M)">&#9835;</button>
+      <button id="btn-center" title="Back to your lane (H)">&#8962;</button>
+      <button id="btn-help" title="Poker guide">?</button>
+    </div>
+  </div>
+
+  <div id="leaderboard">
+    <div class="lb-title">Stash</div>
+    <div id="lb-rows"></div>
+  </div>
+
+  <div id="inspect" class="hidden"></div>
+
+  <div id="handbar">
+    <div id="hint">Click the felt next to your red carpet to deal a card.</div>
+    <div id="hand-row">
+      <div id="hand-cards"></div>
+      <div id="hand-actions">
+        <button id="act-tip" class="act">Tip Dealer<small>T &middot; 10 gold</small></button>
+        <button id="act-swap" class="act">Swap Cards<small>R</small></button>
+        <button id="act-combine" class="act primary">Combine<small>C</small></button>
+        <button id="act-fold" class="act danger">Fold<small>Esc</small></button>
+        <button id="act-ready" class="act go">Ready<small>Space</small></button>
+      </div>
+    </div>
+  </div>
+
+  <div id="banner" class="hidden"></div>
+  <div id="toast"></div>
+</div>
+
+<div id="menu" class="overlay">
+  <div class="panel menu-panel">
+    <div class="logo">
+      <span class="logo-suit s-spade">&#9824;</span><span class="logo-suit s-heart">&#9829;</span>
+      <h1>Poker TD</h1>
+      <span class="logo-suit s-diamond">&#9830;</span><span class="logo-suit s-club">&#9827;</span>
+    </div>
+    <p class="tagline">You're a gambler in the casino. After every hand of poker, looters come to steal your winnings. Your cards become towers. Defend your stash. The biggest pile of gold after level 30 wins.</p>
+    <label class="field">Your name <input id="in-name" maxlength="14" value="You"></label>
+    <div class="field">Difficulty
+      <div id="in-mode" class="seg"></div>
+      <div id="mode-desc" class="muted"></div>
+    </div>
+    <div class="field">Rival gamblers
+      <div id="in-rivals" class="seg"></div>
+    </div>
+    <div class="menu-buttons">
+      <button id="btn-start" class="big">Deal Me In</button>
+      <button id="btn-howto">How to Play</button>
+    </div>
+    <div class="online-row">
+      <button id="btn-public" class="online-main">Play Online</button>
+      <button id="btn-host">Private Table</button>
+      <button id="btn-join">Join with Code</button>
+    </div>
+  </div>
+</div>
+
+<div id="guide" class="overlay hidden">
+  <div class="panel guide-panel">
+    <h2>How to Play</h2>
+    <ol>
+      <li><b>Deal.</b> Each hand, click 5 spots on the felt to deal 5 cards. Every card is a tower. Put them where they cover your carpet (your lane has your colour).</li>
+      <li><b>Swap (once).</b> Select up to 4 cards you don't want and press <b>Swap</b> to replace them.</li>
+      <li><b>Combine.</b> Select cards that make a poker hand and press <b>Combine</b>. They merge into one much stronger tower.</li>
+      <li><b>Defend.</b> Looters run your maze toward your vault. Kills pay gold. Leaks cost gold. Hit 0 gold and you're out.</li>
+      <li><b>Win the hand.</b> The best poker hand each round wins bonus gold.</li>
+      <li><b>Tip the dealer</b> (10 gold each, before your first card) for a chance at a stacked deck. More tips, better odds.</li>
+      <li><b>Fold</b> to skip a round: no cards, but no looters either.</li>
+    </ol>
+    <h3>Hands, best to worst</h3>
+    <table class="guide-table">
+      <tr><td>Straight Flush</td><td>5 in a row, same suit</td><td>Huge crits, marks looters</td></tr>
+      <tr><td>Four of a Kind</td><td>4 of the same rank</td><td>Heavy hits that stun</td></tr>
+      <tr><td>Full House</td><td>3 of a kind + a pair</td><td>Frost splash, slows</td></tr>
+      <tr><td>Flush</td><td>5 of the same suit</td><td>Poison, slows</td></tr>
+      <tr><td>Straight</td><td>5 in a row</td><td>Very fast attacks</td></tr>
+      <tr><td>Three of a Kind</td><td>3 of the same rank</td><td>Rapid fire</td></tr>
+      <tr><td>Two Pair</td><td>2 different pairs</td><td>Immune to the final boss</td></tr>
+      <tr><td>Pair</td><td>2 of the same rank</td><td>Solid shooter</td></tr>
+    </table>
+    <h3>Single cards</h3>
+    <p class="suits-line"><span class="s-club">&#9827; Clubs</span> steady shots &middot; <span class="s-diamond">&#9830; Diamonds</span> chain lightning &middot; <span class="s-heart">&#9829; Hearts</span> magic fire (spell-immune looters ignore it) &middot; <span class="s-spade">&#9824; Spades</span> long range</p>
+    <p class="muted">Controls: drag or WASD to move the camera, mouse wheel to zoom, 1-5 select hand cards, H returns to your lane.</p>
+    <button id="btn-guide-close" class="big">Got it</button>
+  </div>
+</div>
+
+<div id="lobby" class="overlay hidden">
+  <div class="panel lobby-panel">
+    <h2 id="lobby-title">Online Table</h2>
+    <div id="lobby-join" class="hidden">
+      <label class="field">Your name <input id="in-name-join" maxlength="14"></label>
+      <label class="field">Room code <input id="in-code" maxlength="5" placeholder="ABCDE" autocomplete="off"></label>
+      <button id="btn-join-go" class="big">Join</button>
+    </div>
+    <div id="lobby-room" class="hidden">
+      <div class="code-box">Room code <span id="lobby-code">-----</span>
+        <button id="btn-copy">Copy code</button> <button id="btn-copy-link" class="hidden">Copy invite link</button></div>
+      <p class="muted" id="lobby-help"></p>
+      <div id="lobby-count" class="lobby-count"></div>
+      <div id="lobby-seats"></div>
+      <div id="lobby-host-opts" class="hidden">
+        <div class="field">Difficulty <div id="in-mode-online" class="seg"></div></div>
+        <div class="field">Computer players <div id="in-bots" class="seg"></div></div>
+        <button id="btn-lobby-start" class="big">Start Game</button>
+      </div>
+      <div id="lobby-wait" class="hidden">
+        <p class="muted">The host picks the difficulty. Anyone can start once everyone's in.</p>
+        <button id="btn-guest-start" class="big">Start Game</button>
+      </div>
+    </div>
+    <p id="lobby-status" class="muted"></p>
+    <button id="btn-lobby-leave">Leave</button>
+  </div>
+</div>
+
+<div id="over" class="overlay hidden">
+  <div class="panel over-panel">
+    <h2 id="over-title"></h2>
+    <p id="over-sub" class="muted"></p>
+    <table id="over-table"></table>
+    <button id="btn-again" class="big">Play Again</button>
+  </div>
+</div>
+
+<script src="js/mapdata.js"></script>
+<script src="js/data.js"></script>
+<script src="js/bosses.js"></script>
+<script src="js/poker.js"></script>
+<script src="js/game.js"></script>
+<script src="js/art.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/render.js"></script>
+<script src="js/net.js"></script>
+<script src="js/ui.js"></script>
+</body>
+</html>
