@@ -43,31 +43,34 @@ window.PTD = window.PTD || {};
   function group(parent, p, keep) { const g = new T.Group(); if (p) g.position.set(p[0], p[1], p[2]); if (keep) g.userData.keep = true; parent.add(g); return g; }
 
   // ------------------------------------------------------------------ cartoon look
-  // Three flat bands of light (toon shading) and a thick dark outline around every solid part.
+  // "Vinyl toy" shading: a soft light ramp (smooth gradient with a gentle shoulder rather than hard
+  // toon bands), glossy highlights, a faint fresnel sheen and a thin warm-dark outline.
   let toonRamp = null;
   function ramp() {
     if (toonRamp) return toonRamp;
-    toonRamp = new T.DataTexture(new Uint8Array([90, 90, 90, 255, 175, 175, 175, 255, 255, 255, 255, 255]), 3, 1, T.RGBAFormat);
-    toonRamp.minFilter = toonRamp.magFilter = T.NearestFilter; toonRamp.generateMipmaps = false; toonRamp.needsUpdate = true;
+    const v = [100, 128, 168, 212, 240, 255];
+    toonRamp = new T.DataTexture(new Uint8Array(v.flatMap(x => [x, x, x, 255])), v.length, 1, T.RGBAFormat);
+    toonRamp.minFilter = toonRamp.magFilter = T.LinearFilter; toonRamp.generateMipmaps = false; toonRamp.needsUpdate = true;
     return toonRamp;
   }
   const toonCache = new Map();
   // style: { bright (colour scale), rim (rim-light colour or null) }
-  function toon(m, style) {
+  function toon(m, style, vc) {
     if (!m || !m.isMeshStandardMaterial || m.transparent) return m;
     style = style || {};
-    const key = m.uuid + '|' + (style.bright || '') + '|' + (style.rim || '') + '|' + !!m.vertexColors;
+    vc = !!(vc || m.vertexColors);
+    const key = m.uuid + '|' + (style.bright || '') + '|' + (style.rim || '') + '|' + vc;
     if (toonCache.has(key)) return toonCache.get(key);
     const own = !m.userData.shared;   // a per-object clone stays per-object
     // toon materials skip PBR energy loss, so scale down to stay under the bloom threshold
     const c = m.color.clone().multiplyScalar(style.bright || (m.metalness > 0.5 ? 0.62 : 0.5));
     if (style.bright) { const mx = Math.max(c.r, c.g, c.b); if (mx > 0.62) c.multiplyScalar(0.62 / mx); }   // whites stay white, not glowing
     if (style.bright) { const hsl = {}; c.getHSL(hsl); c.setHSL(hsl.h, Math.min(1, hsl.s * 1.25), hsl.l); }
-    const t = new T.MeshToonMaterial({ color: c, map: m.map || null, gradientMap: ramp(), emissive: m.emissive ? m.emissive.clone() : new T.Color(0), emissiveMap: m.emissiveMap || null, vertexColors: !!m.vertexColors });
+    const t = new T.MeshToonMaterial({ color: c, map: m.map || null, gradientMap: ramp(), emissive: m.emissive ? m.emissive.clone() : new T.Color(0), emissiveMap: m.emissiveMap || null, vertexColors: vc });
     // Glossy-toy finish: a crisp cartoon specular highlight from the sun on every part, plus an
     // optional coloured fresnel rim so characters pop against the table.
     const rim = style.rim ? new T.Color(style.rim) : null;
-    const gloss = m.metalness > 0.5 ? 0.55 : (m.roughness < 0.4 ? 0.4 : 0.22);
+    const gloss = m.metalness > 0.5 ? 0.6 : (m.roughness < 0.4 ? 0.5 : 0.32);
     t.onBeforeCompile = (sh) => {
       sh.uniforms.rimColor = { value: rim || new T.Color(0) };
       sh.uniforms.gloss = { value: gloss };
@@ -76,11 +79,13 @@ window.PTD = window.PTD || {};
         vec3 vdir = normalize(vViewPosition);
         #if NUM_DIR_LIGHTS > 0
           vec3 hv = normalize(directionalLights[0].direction + vdir);
-          float spk = smoothstep(0.955, 0.972, max(dot(normal, hv), 0.0));
-          gl_FragColor.rgb += spk * gloss * 0.55;
+          float nh = max(dot(normal, hv), 0.0);
+          float spk = smoothstep(0.955, 0.975, nh);                 // crisp glint
+          float soft = pow(nh, 28.0);                               // broad lacquer sheen
+          gl_FragColor.rgb += (spk * 0.3 + soft * 0.08) * gloss * min(directionalLights[0].color, vec3(1.0));
         #endif
         float rimK = pow(1.0 - abs(dot(normal, vdir)), 2.5);
-        gl_FragColor.rgb += rimColor * rimK * 0.55;`);
+        gl_FragColor.rgb += rimColor * rimK * 0.55 + vec3(0.06) * rimK;`);
     };
     t.customProgramCacheKey = () => 'toonGloss';
     if (own) return t;
@@ -93,7 +98,7 @@ window.PTD = window.PTD || {};
   function outline(width) {
     const w = width || 6;
     if (outlineMats[w]) return outlineMats[w];
-    const outlineMat = outlineMats[w] = new T.MeshBasicMaterial({ color: 0x120a06, side: T.BackSide });
+    const outlineMat = outlineMats[w] = new T.MeshBasicMaterial({ color: 0x24140c, side: T.BackSide });
     outlineMat.onBeforeCompile = (sh) => {
       sh.uniforms.ow = { value: w };
       sh.vertexShader = 'uniform float ow;\n' + sh.vertexShader.replace('#include <begin_vertex>',
@@ -109,9 +114,10 @@ window.PTD = window.PTD || {};
     root.traverse(o => { if (o.isMesh && !o.userData.isOutline) solids.push(o); });
     for (const o of solids) {
       if (opts.skip && opts.skip(o)) continue;
-      if (Array.isArray(o.material)) { o.material = o.material.map(m => toon(m, opts.style)); continue; }
+      const vc = !!o.geometry.attributes.color;    // sculpted kit parts carry baked AO in vertex colours
+      if (Array.isArray(o.material)) { o.material = o.material.map(m => toon(m, opts.style, vc)); continue; }
       const basic = o.material.isMeshBasicMaterial;
-      o.material = toon(o.material, opts.style);
+      o.material = toon(o.material, opts.style, vc);
       if (basic || o.material.transparent || o.material.blending === T.AdditiveBlending) continue;
       if (opts.outlineIf ? !opts.outlineIf(o) : opts.onlyShadowCasters && !o.castShadow) continue;
       const hull = new T.Mesh(o.geometry, outline(opts.width));

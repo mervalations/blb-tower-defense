@@ -48,6 +48,39 @@ window.PTD = window.PTD || {};
     return dollarTex;
   }
 
+  // ------------------------------------------------------------------ sculpted part kit
+  // Vinyl-toy parts sculpted in Blender (tools/blender/kit.py -> js/kit.js). Each piece is a set of
+  // meshes by colour role (main + sole/lace/band/trim/cuff/metal/dark/light/glass/glow), centred on its
+  // pivot with largest half-extent 1, and carries baked ambient occlusion in its vertex colours.
+  const KIT = {};
+  (function decodeKit() {
+    const D = PTD.KIT_DATA;
+    if (!D) return;
+    const bin = atob(D.b), buf = new ArrayBuffer(bin.length), u8 = new Uint8Array(buf);
+    for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+    const pad = (n) => (n + 3) & ~3;
+    for (const name in D.m) {
+      KIT[name] = D.m[name].map(([role, nv, ni, off]) => {
+        const p16 = new Int16Array(buf, off, nv * 3);
+        const uvOff = pad(off + nv * 6), aoOff = uvOff + nv * 4, idxOff = pad(aoOff + nv);
+        const uv16 = new Uint16Array(buf, uvOff, nv * 2), ao8 = new Uint8Array(buf, aoOff, nv), idx = new Uint16Array(buf, idxOff, ni);
+        const pos = new Float32Array(nv * 3), uv = new Float32Array(nv * 2), col = new Uint8Array(nv * 3);
+        for (let i = 0; i < nv * 3; i++) pos[i] = p16[i] / 32767;
+        for (let i = 0; i < nv * 2; i++) uv[i] = uv16[i] / 65535;
+        for (let i = 0; i < nv; i++) col[i * 3] = col[i * 3 + 1] = col[i * 3 + 2] = ao8[i];
+        const g = new T.BufferGeometry();
+        g.setAttribute('position', new T.BufferAttribute(pos, 3));
+        g.setAttribute('uv', new T.BufferAttribute(uv, 2));
+        g.setAttribute('color', new T.BufferAttribute(col, 3, true));
+        g.setIndex(new T.BufferAttribute(idx.slice(), 1));
+        g.computeVertexNormals();
+        g.computeBoundingSphere();
+        return { role, geo: g };
+      });
+    }
+  })();
+  const hasKit = (name) => !!KIT[name];
+
   // ------------------------------------------------------------------ Blender models
   // Hand-built looters made in Blender (tools/blender/looters.py) and embedded by
   // tools/embed-models.py. Parts are named after the joints the animation drives.
@@ -118,6 +151,44 @@ window.PTD = window.PTD || {};
   }
   function pivot(parent, p) { const g = new T.Group(); g.position.set(p[0], p[1], p[2]); parent.add(g); return g; }
 
+  // Kit part: kp(parent, piece, mats, size, pos, rot)
+  //   mats: a material (for the 'main' role) or { main, sole, band, ... } - missing roles use ROLE defaults
+  //   size: number = uniform scale; [hx, hy, hz] = stretch the piece's bounds to these half-extents
+  //         (so it fills exactly the space the old primitive did)
+  const ROLE = {
+    sole: () => gloss('#f6f1e6'), lace: () => gloss('#ffffff'), cuff: () => mat('#ffffff', { roughness: 0.5 }),
+    metal: () => metal('#e1b12c'), dark: () => mat('#3b2a1a', { roughness: 0.6 }), light: () => metal('#d9e1e8'),
+    glass: () => glass('#bfefff', 0.5), glow: () => glow('#fff36b', 2.2), band: () => fabric('#1f1f24'),
+    trim: (m) => m && m.color ? mat('#' + m.color.clone().multiplyScalar(0.72).getHexString(), { roughness: 0.8 }) : fabric('#333'),
+  };
+  const kitBounds = {};
+  function kitBox(name) {
+    if (kitBounds[name]) return kitBounds[name];
+    const b = new T.Box3();
+    for (const p of KIT[name]) { if (!p.geo.boundingBox) p.geo.computeBoundingBox(); b.union(p.geo.boundingBox); }
+    return (kitBounds[name] = b);
+  }
+  function kp(parent, name, mats, size, pos, rot) {
+    const g = new T.Group();
+    const m0 = mats && mats.isMaterial ? { main: mats } : (mats || {});
+    for (const { role, geo: gg } of KIT[name]) {
+      const m = m0[role] || (ROLE[role] ? ROLE[role](m0.main) : null) || m0.main || fabric('#888');
+      const mesh = new T.Mesh(gg, m);
+      mesh.castShadow = true;
+      g.add(mesh);
+    }
+    if (Array.isArray(size)) {
+      const b = kitBox(name), sz = new T.Vector3(); b.getSize(sz);
+      g.scale.set(size[0] / (sz.x / 2), size[1] / (sz.y / 2), size[2] / (sz.z / 2));
+    } else g.scale.setScalar(size || 1);
+    if (pos) g.position.set(pos[0], pos[1], pos[2]);
+    if (rot) g.rotation.set(rot[0], rot[1], rot[2]);
+    parent.add(g);
+    return g;
+  }
+  // hats and hair are sculpted around a head of radius 1; this puts them on a head of radius r
+  const kpHead = (h, name, mats, r, pos, rot) => kp(h, name, mats, r * (PTD.KIT_DATA.k[name] ? 1 / PTD.KIT_DATA.k[name] : 1), pos || [0, 0, 0], rot);
+
   // ------------------------------------------------------------------ faces
   function eyes(ctx, head, o) {
     const y = o.y || 0.05, z = o.z || 0.27, sp = o.sp || 0.12, s = (o.size || 0.085) * 1.25;   // big cartoon eyes
@@ -143,7 +214,8 @@ window.PTD = window.PTD || {};
   }
 
   function humanHead(ctx, head, o) {
-    part(head, sph(), ctx.skinM, [0.3, 0.33, 0.3], [0, 0, 0]).castShadow = true;
+    if (hasKit('head')) kp(head, 'head', ctx.skinM, [0.31, 0.34, 0.31], [0, -0.01, 0]);
+    else part(head, sph(), ctx.skinM, [0.3, 0.33, 0.3], [0, 0, 0]).castShadow = true;
     part(head, sph(), ctx.skinM, [0.055, 0.07, 0.06], [0, -0.02, 0.3]);                    // nose
     for (const s of [-1, 1]) part(head, sph(), ctx.skinM, [0.05, 0.08, 0.04], [s * 0.3, 0, 0]);   // ears
     eyes(ctx, head, { y: 0.06, z: 0.25, sp: 0.11, size: 0.085, iris: o.iris || '#4a3020', brow: o.hair || '#2b1d12', angry: o.angry });
@@ -215,15 +287,22 @@ window.PTD = window.PTD || {};
         part(hip, box(), bottom, [0.2, 0.62, 0.2], [0, -0.42, 0]).castShadow = true;
         part(hip, box(), shoes, [0.24, 0.14, 0.32], [0, -0.85, 0.05]);
       } else if (!o.robe) {
-        part(hip, cap(), bottom, [0.13, 0.24, 0.13], [0, -0.42, 0]).castShadow = true;
+        if (hasKit('leg')) kp(hip, 'leg', { main: bottom }, [0.14, 0.37, 0.14], [0, -0.42, 0]);
+        else part(hip, cap(), bottom, [0.13, 0.24, 0.13], [0, -0.42, 0]).castShadow = true;
         if (o.flares) part(hip, cone(), bottom, [0.17, 0.32, 0.17], [0, -0.7, 0]);
         if (o.bigShoes) part(hip, sph(), shoes, [0.17, 0.1, 0.36], [0, -0.85, 0.16]).castShadow = true;
         else if (o.flippers) part(hip, sph(), gloss(o.shoes || '#2c3e50'), [0.16, 0.04, 0.4], [0, -0.9, 0.18]);
-        else part(hip, sph(), shoes, [0.17, 0.12, 0.27], [0, -0.83, 0.08]).castShadow = true;
+        else if (hasKit('sneaker')) {
+          const dark = new T.Color(o.shoes || '#2a1d14'); const boots = o.boots != null ? o.boots : (dark.r + dark.g + dark.b) < 0.45;
+          if (boots) kp(hip, 'boot', { main: shoes, trim: shoes, sole: mat('#2a1a10', { roughness: 0.5 }) }, [0.17, 0.22, 0.27], [0, -0.74, 0.06]);
+          else kp(hip, 'sneaker', { main: shoes }, [0.17, 0.13, 0.3], [0, -0.83, 0.09]);
+        } else part(hip, sph(), shoes, [0.17, 0.12, 0.27], [0, -0.83, 0.08]).castShadow = true;
       } else part(hip, sph(), shoes, [0.15, 0.1, 0.24], [0, -0.84, 0.08]).castShadow = true;
       legs.push(hip);
     }
-    const torso = o.boxy ? part(rig, box(), ctx.topM, [0.64 * (o.wide || 1), 0.7, 0.46], [0, 1.33, 0]) : part(rig, sph(), ctx.topM, [0.37 * (o.wide || 1), 0.46, 0.33], [0, 1.3, 0]);
+    const torso = o.boxy ? part(rig, box(), ctx.topM, [0.64 * (o.wide || 1), 0.7, 0.46], [0, 1.33, 0])
+      : hasKit('torso') ? kp(rig, 'torso', { main: ctx.topM, trim: ROLE.trim(ctx.topM) }, [0.38 * (o.wide || 1), 0.47, 0.34], [0, 1.3, 0])
+      : part(rig, sph(), ctx.topM, [0.37 * (o.wide || 1), 0.46, 0.33], [0, 1.3, 0]);
     torso.castShadow = true;
     if (o.robe) part(rig, cone(), ctx.topM, [0.48, 1.05, 0.42], [0, 0.6, 0]).castShadow = true;
     if (o.belt) part(rig, cyl(), mat(o.belt, { roughness: 0.4 }), [0.335 * (o.wide || 1), 0.08, 0.295], [0, 1.06, 0]);
@@ -237,8 +316,14 @@ window.PTD = window.PTD || {};
     for (const s of [-1, 1]) {
       const sh = pivot(rig, [s * 0.36 * (o.wide || 1), 1.55, 0]);
       if (o.boxy) part(sh, box(), ctx.topM, [0.15, 0.44, 0.15], [0, -0.25, 0]);
-      else part(sh, cap(), o.robe || o.coat ? fabric(o.coat || o.top) : ctx.topM, [0.075 * (o.armW || 1), 0.2, 0.075 * (o.armW || 1)], [0, -0.24, 0]);
-      const hand = part(sh, sph(), o.glove ? mat(o.glove) : ctx.skinM, [0.12, 0.12, 0.12], [0, -0.52, 0.02]);   // big cartoon mitts
+      else {
+        const armM = o.robe || o.coat ? fabric(o.coat || o.top) : ctx.topM;
+        if (hasKit('sleeve')) kp(sh, 'sleeve', { main: armM, trim: ROLE.trim(armM) }, [0.085 * (o.armW || 1), 0.3, 0.085 * (o.armW || 1)], [0, -0.24, 0]);
+        else part(sh, cap(), armM, [0.075 * (o.armW || 1), 0.2, 0.075 * (o.armW || 1)], [0, -0.24, 0]);
+      }
+      const handM = o.glove ? mat(o.glove) : ctx.skinM;
+      const hand = hasKit('mitt') ? kp(sh, s === 1 && o.prop ? 'fist' : 'mitt', { main: handM, cuff: o.glove ? mat('#ffffff', { roughness: 0.5 }) : handM }, 0.17, [0, -0.5, 0.02], [0, s === 1 ? 0 : Math.PI, 0])
+        : part(sh, sph(), handM, [0.12, 0.12, 0.12], [0, -0.52, 0.02]);   // big cartoon mitts
       hand.castShadow = true;
       arms.push(sh);
       if (s === 1) ctx.rightHand = hand;
@@ -257,14 +342,17 @@ window.PTD = window.PTD || {};
     ctx.sackG = g;
     const s = scale || 1;
     const burlap = mat('#c8a46a', { roughness: 0.95 });
-    part(g, sph(), burlap, [0.36 * s, 0.4 * s, 0.32 * s]).castShadow = true;
-    part(g, cyl(), burlap, [0.1 * s, 0.14 * s, 0.1 * s], [0, 0.42 * s, 0]);
-    part(g, tor(), mat('#7a5a2c'), [0.1 * s, 0.1 * s, 0.1 * s], [0, 0.42 * s, 0], [Math.PI / 2, 0, 0]);
+    if (hasKit('sack')) kp(g, 'sack', { main: burlap, dark: mat('#7a5a2c'), metal: metal('#ffcf40') }, 0.5 * s, [0, 0.02 * s, 0], [0, Math.PI, 0]);
+    else {
+      part(g, sph(), burlap, [0.36 * s, 0.4 * s, 0.32 * s]).castShadow = true;
+      part(g, cyl(), burlap, [0.1 * s, 0.14 * s, 0.1 * s], [0, 0.42 * s, 0]);
+      part(g, tor(), mat('#7a5a2c'), [0.1 * s, 0.1 * s, 0.1 * s], [0, 0.42 * s, 0], [Math.PI / 2, 0, 0]);
+    }
     const lbl = new T.Mesh(geo('dollarPlane', () => new T.PlaneGeometry(0.34, 0.34)), mat('#ffffff', { map: dollar(), transparent: true, roughness: 0.9 }));
     lbl.position.set(0, 0, -0.325 * s); lbl.rotation.y = Math.PI; lbl.scale.setScalar(s); g.add(lbl);
     ctx.detail.push(lbl);
     // a couple of coins peeking out of the top
-    for (let i = 0; i < 2; i++) ctx.detail.push(part(g, cyl(), metal('#ffcf40'), [0.07 * s, 0.015 * s, 0.07 * s], [(i - 0.5) * 0.08 * s, 0.53 * s, 0], [0.4 + i * 0.5, 0, 0.3]));
+    if (!hasKit('sack')) for (let i = 0; i < 2; i++) ctx.detail.push(part(g, cyl(), metal('#ffcf40'), [0.07 * s, 0.015 * s, 0.07 * s], [(i - 0.5) * 0.08 * s, 0.53 * s, 0], [0.4 + i * 0.5, 0, 0.3]));
     return g;
   }
 
@@ -285,8 +373,15 @@ window.PTD = window.PTD || {};
   }
 
   // Hats and other headwear on ctx.head.
+  const KIT_HATS = { top: 'h_top', bowler: 'h_bowler', cowboy: 'h_cowboy', fedora: 'h_fedora', beanie: 'h_beanie', bandana: 'h_bandana', helm: 'h_helm' };
   function hat(ctx, kind, c, band) {
     const h = ctx.head;
+    const kh = KIT_HATS[kind];
+    if (kh && hasKit(kh)) {
+      const m = kind === 'helm' ? metal(c) : fabric(c);
+      kpHead(h, kh, { main: m, band: kind === 'helm' ? metal(band || '#e1b12c') : fabric(band || (kind === 'beanie' ? c : kind === 'bandana' ? '#ffffff' : '#1f1f24')) }, 0.32, [0, 0, 0]);
+      return;
+    }
     switch (kind) {
       case 'top': part(h, cyl(), fabric(c), [0.36, 0.03, 0.36], [0, 0.27, 0]); part(h, cyl(), fabric(c), [0.2, 0.36, 0.2], [0, 0.45, 0]);
         if (band) part(h, cyl(), fabric(band), [0.205, 0.06, 0.205], [0, 0.32, 0]); break;
@@ -484,6 +579,27 @@ window.PTD = window.PTD || {};
 
   function crewHat(ctx, kind, c, band) {
     const h = ctx.head;
+    if (kind === 'tricorn' && hasKit('h_tricorn')) {
+      kpHead(h, 'h_tricorn', { main: fabric(c), band: metal(band || '#e1b12c') }, 0.32);
+      part(h, sph(), gloss('#f7f7f7'), [0.06, 0.06, 0.02], [0, 0.38, 0.27]);                                     // skull badge
+      return;
+    }
+    if (kind === 'viking' && hasKit('h_helm')) {
+      kpHead(h, 'h_helm', { main: metal(c), band: metal(band || c) }, 0.32);
+      for (const s of [-1, 1]) kp(h, 'horn', gloss('#fbf3dc'), 0.2, [s * 0.3, 0.16, 0], [0, s === 1 ? 0 : Math.PI, 0.1 * s]);
+      return;
+    }
+    if (kind === 'knight' && hasKit('h_helm')) {
+      kpHead(h, 'h_helm', { main: metal(c), band: metal(c) }, 0.33);
+      part(h, sph(), fabric(band || '#c0392b'), [0.07, 0.24, 0.2], [0, 0.5, -0.08], [-0.4, 0, 0]).castShadow = true;   // plume
+      return;
+    }
+    if (kind === 'toque' && hasKit('h_toque')) { kpHead(h, 'h_toque', fabric(c || '#ffffff'), 0.31); return; }
+    if (kind === 'wizard' && hasKit('h_wizard')) {
+      const w = kpHead(h, 'h_wizard', { main: fabric(c), band: fabric(band || '#f5d76e') }, 0.32);
+      for (let i = 0; i < 3; i++) ctx.detail.push(part(h, OCTA(), glow(band || '#f5d76e', 1.8), [0.04, 0.04, 0.02], [Math.cos(i * 2.1) * 0.12, 0.42 + i * 0.13, Math.sin(i * 2.1) * 0.1 + 0.06 - i * 0.05]));
+      return w;
+    }
     switch (kind) {
       case 'tricorn':
         part(h, tri(), fabric(c), [0.46, 0.06, 0.46], [0, 0.25, 0], [0, Math.PI, 0]).castShadow = true;
@@ -591,6 +707,22 @@ window.PTD = window.PTD || {};
     const p = pivot(hd.parent, [hd.position.x, hd.position.y, hd.position.z + 0.08]);
     ctx.propG = p;
     const W = wood('#8b5a2b'), steel = metal('#cfd6dc'), gold = metal('#e1b12c');
+    const KP = {
+      cutlass: ['p_cutlass', 0.72, { light: steel, metal: gold, dark: mat('#3b2a1a') }],
+      sword: ['p_sword', 0.92, { light: steel, metal: gold, dark: mat('#3b2a1a') }],
+      club: ['p_club', 0.75, W],
+      wand: ['p_wand', 0.48, { dark: mat('#2b1d12'), glow: glow(o.wandC || '#fff36b', 2.4) }],
+      trident: ['p_trident', 1.05, { dark: W, metal: gold }],
+      raygun: ['p_raygun', 0.34, { main: metal('#c0c0c0'), metal: glow('#7dff8a', 1.6), glow: glow('#7dff8a', 2.4) }],
+      shuriken: ['p_shuriken', 0.16, { light: steel, dark: mat('#333333') }],
+      flask: ['p_flask', 0.3, { glass: glass('#bfffcf', 0.45), dark: mat('#7a5a2c'), glow: glow(o.flaskC || '#7dff8a', 1.8) }],
+    };
+    if (KP[kind] && hasKit(KP[kind][0])) {
+      const [nm, size, mats] = KP[kind];
+      kp(p, nm, mats, size, kind === 'shuriken' ? [0, 0.12, 0.03] : kind === 'raygun' ? [0, 0.06, 0.04] : [0, 0, 0], kind === 'raygun' ? [0, 0, 0] : null);
+      return true;
+    }
+    if (kind === 'rollingpin' && hasKit('p_rollingpin')) { kp(p, 'p_rollingpin', { main: wood('#d9a066'), dark: W }, 0.42, [-0.36, 0.12, 0.04], [0, 0, -Math.PI / 2]); return true; }
     switch (kind) {
       case 'cutlass': part(p, cyl(), gold, [0.03, 0.14, 0.03], [0, 0, 0]); part(p, tor(), gold, [0.07, 0.07, 0.07], [0, 0.08, 0.02], [0, Math.PI / 2, 0]);
         part(p, box(), steel, [0.05, 0.55, 0.012], [0.03, 0.38, 0], [0, 0, -0.12]); break;
@@ -944,10 +1076,10 @@ window.PTD = window.PTD || {};
       rig.traverse(o => { if (o.isMesh) before.set(o, o.material); });
       rig.updateMatrixWorld(true);
       const big = (o) => { if (!o.geometry.boundingSphere) o.geometry.computeBoundingSphere(); const sc = new T.Vector3(); o.matrixWorld.decompose(new T.Vector3(), new T.Quaternion(), sc); return o.geometry.boundingSphere.radius * Math.max(sc.x, sc.y, sc.z) > 0.07 && ctx.detail.indexOf(o) < 0; };
-      PTD.Toon.cartoonize(rig, { width: 4.2, outlineIf: big, style: { bright: 0.6, rim: '#bfe4ff' } });
+      PTD.Toon.cartoonize(rig, { width: 3.2, outlineIf: big, style: { bright: 0.6, rim: '#bfe4ff' } });
       const swap = new Map();
-      for (const [o, m] of before) if (o.material !== m) swap.set(m, o.material);
-      ctx.flash = ctx.flash.map(m => swap.get(m) || m).filter(m => m.emissive);
+      for (const [o, m] of before) if (o.material !== m) { if (!swap.has(m)) swap.set(m, new Set()); swap.get(m).add(o.material); }
+      ctx.flash = [...new Set(ctx.flash.flatMap(m => swap.has(m) ? [...swap.get(m)] : [m]))].filter(m => m.emissive);
     }
     return { rig, anim, flash: ctx.flash, detail: ctx.detail };
   }
@@ -986,16 +1118,21 @@ window.PTD = window.PTD || {};
     const legs = [], feet = [];
     for (const s2 of [-1, 1]) {
       const hip = pivot(rig, [s2 * 0.24 * W, 0.95, 0]);
-      part(hip, cap(), dark, [0.17, 0.32, 0.17], [0, -0.38, 0]).castShadow = true;
-      part(hip, cyl(), fabric('#2a1a10'), [0.19, 0.28, 0.19], [0, -0.78, 0]);
+      const kitLegs = hasKit('leg') && hasKit('boot');
+      if (kitLegs) kp(hip, 'leg', { main: dark, trim: dark }, [0.19, 0.42, 0.19], [0, -0.4, 0]);
+      else {
+        part(hip, cap(), dark, [0.17, 0.32, 0.17], [0, -0.38, 0]).castShadow = true;
+        part(hip, cyl(), fabric('#2a1a10'), [0.19, 0.28, 0.19], [0, -0.78, 0]);
+      }
       if (club) {
         const ankle = pivot(hip, [0, -0.88, 0]);
         ankle.rotation.set(0.35, -s2 * 0.85, -s2 * 0.6);          // toes curl in and point down, sole faces inward
         part(ankle, sph(), fabric('#2a1a10'), [0.25, 0.16, 0.38], [0, -0.04, 0.15]).castShadow = true;
         part(ankle, sph(), fabric('#2a1a10'), [0.16, 0.13, 0.16], [0, -0.02, 0.42]);   // knobbly curled toe
         feet.push(ankle);
-      } else part(hip, sph(), fabric('#2a1a10'), [0.18, 0.12, 0.27], [0, -0.92, 0.1]);
-      part(hip, cyl(), gold, [0.2, 0.04, 0.2], [0, -0.64, 0]);
+      } else if (hasKit('boot')) kp(hip, 'boot', { main: gloss('#1c120c'), trim: gold, sole: mat('#2a1a10') }, [0.22, 0.28, 0.32], [0, -0.82, 0.06]);
+      else part(hip, sph(), fabric('#2a1a10'), [0.18, 0.12, 0.27], [0, -0.92, 0.1]);
+      if (!hasKit('boot') || club) part(hip, cyl(), gold, [0.2, 0.04, 0.2], [0, -0.64, 0]);
       if (club) hip.rotation.z = -s2 * 0.13;   // pigeon-toed: knees knock in, feet tucked toward each other
       legs.push(hip);
     }
@@ -1007,8 +1144,11 @@ window.PTD = window.PTD || {};
       for (let r2 = 0; r2 < 3; r2++) for (const s2 of [-1, 1]) part(torso, sph(), skinM, [0.085, 0.07, 0.04], [s2 * 0.1, 0.05 - r2 * 0.13, 0.4]);   // abs
       for (const s2 of [-1, 1]) part(torso, sph(), skinM, [0.2, 0.15, 0.08], [s2 * 0.2, 0.3, 0.36]);   // pecs
     } else {
-      part(torso, sph(), jacket, [0.6 * W, 0.52, 0.44], [0, 0.12, 0]).castShadow = true;
-      part(torso, sph(), jacket, [0.5 * W, 0.45, 0.46], [0, -0.22, 0.06]).castShadow = true;
+      if (hasKit('torso')) kp(torso, 'torso', { main: jacket, trim: gold }, [0.62 * W, 0.68, 0.5], [0, -0.04, 0.02]);
+      else {
+        part(torso, sph(), jacket, [0.6 * W, 0.52, 0.44], [0, 0.12, 0]).castShadow = true;
+        part(torso, sph(), jacket, [0.5 * W, 0.45, 0.46], [0, -0.22, 0.06]).castShadow = true;
+      }
       part(torso, cone(), fabric('#ffffff'), [0.17, 0.42, 0.03], [0, 0.18, 0.43], [Math.PI, 0, 0]);
       if (style === 'martini') { for (const s2 of [-1, 1]) part(torso, cone(), gloss('#111'), [0.08, 0.14, 0.05], [s2 * 0.07, 0.36, 0.45], [0, 0, s2 * Math.PI / 2]); }
       else part(torso, cone(), gloss('#c0392b'), [0.05, 0.34, 0.02], [0, 0.15, 0.46], [Math.PI, 0, 0]);
@@ -1032,10 +1172,14 @@ window.PTD = window.PTD || {};
     for (const s2 of [-1, 1]) {
       const sh = pivot(torso, [s2 * 0.64 * W, 0.32, 0]);
       palms.push(pivot(sh, [0, -0.86, 0.04]));   // where hand blasts (boss.slime) come out
-      part(sh, cap(), muscle ? skinM : jacket, [muscle ? 0.17 : 0.13, 0.28, muscle ? 0.17 : 0.13], [0, -0.32, 0]).castShadow = true;
+      if (hasKit('sleeve')) kp(sh, 'sleeve', { main: muscle ? skinM : jacket, trim: muscle ? skinM : gold }, [muscle ? 0.19 : 0.15, 0.42, muscle ? 0.19 : 0.15], [0, -0.32, 0]);
+      else part(sh, cap(), muscle ? skinM : jacket, [muscle ? 0.17 : 0.13, 0.28, muscle ? 0.17 : 0.13], [0, -0.32, 0]).castShadow = true;
       if (muscle) part(sh, sph(), skinM, [0.2, 0.18, 0.2], [0, -0.12, 0]);   // biceps
-      part(sh, sph(), mat('#f4f4f4'), [0.17, 0.17, 0.17], [0, -0.7, 0.03]).castShadow = true;
-      part(sh, tor(), gold, [0.06, 0.06, 0.06], [0, -0.7, 0.16]);
+      if (hasKit('fist')) kp(sh, 'fist', { main: gloss('#f6f4ef'), cuff: gold }, 0.24, [0, -0.66, 0.03], [0, s2 === 1 ? 0 : Math.PI, 0]);
+      else {
+        part(sh, sph(), mat('#f4f4f4'), [0.17, 0.17, 0.17], [0, -0.7, 0.03]).castShadow = true;
+        part(sh, tor(), gold, [0.06, 0.06, 0.06], [0, -0.7, 0.16]);
+      }
       arms.push(sh);
     }
     // swaying cape in strips
@@ -1050,23 +1194,35 @@ window.PTD = window.PTD || {};
         cape.push(strip);
       }
     }
-    // head: the face picture on a big round head, with a jewelled crown
+    // head: a bobblehead - the boss's photo wrapped onto the front of a sculpted 3D head, blended
+    // into a matching skin tone, with sculpted hair - or (without the kit) the photo on a round head
     const head = pivot(rig, [0, 2.3, 0]);
     head.scale.setScalar(1.55);
-    part(head, sph(), skinM, [0.34, 0.34, 0.34]).castShadow = true;
-    const faceMat = new T.MeshBasicMaterial({ color: 0xffffff });
-    const face = part(head, geo('bossFace', () => new T.CircleGeometry(0.3, 40)), faceMat, [1, 1, 1], [0, 0, 0.345]);
-    face.castShadow = false;
-    part(head, tor(), gold, [0.305, 0.305, 0.25], [0, 0, 0.345]);
-    const crown = pivot(head, [0, 0.33, 0]);
+    const bobble = hasKit('bhead');
+    let faceMat, face;
+    if (bobble) {
+      faceMat = new T.MeshLambertMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 0.32 });
+      faceMat.userData.shared = true;   // keeps its own glow: excluded from the hit-flash list
+      const hg = kp(head, 'bhead', faceMat, 0.44, [0, 0.03, 0.02]);
+      face = hg.children[0];
+      const hair = boss.hair || ['short', '#3b2a1a'];
+      if (hair[0] !== 'none' && hasKit('hair_' + hair[0])) kpHead(head, 'hair_' + hair[0], mat(hair[1], { roughness: 0.75 }), 0.44 * PTD.KIT_DATA.k.bhead, [0, 0.06, 0.0]);
+    } else {
+      part(head, sph(), skinM, [0.34, 0.34, 0.34]).castShadow = true;
+      faceMat = new T.MeshBasicMaterial({ color: 0xffffff });
+      face = part(head, geo('bossFace', () => new T.CircleGeometry(0.3, 40)), faceMat, [1, 1, 1], [0, 0, 0.345]);
+      face.castShadow = false;
+      part(head, tor(), gold, [0.305, 0.305, 0.25], [0, 0, 0.345]);
+    }
+    const crown = pivot(head, [0, bobble ? 0.52 : 0.33, 0]);
     part(crown, cyl(), gold, [0.22, 0.1, 0.22]);
     for (let k = 0; k < 5; k++) {
       part(crown, cone(), gold, [0.05, 0.18, 0.05], [Math.cos(k / 5 * TAU) * 0.21, 0.13, Math.sin(k / 5 * TAU) * 0.21]);
       part(crown, sph(), glow(['#ff4d4d', '#3d8bff', '#2fa35c', '#ffffff', '#c39bff'][k], 2.2), [0.035, 0.035, 0.035], [Math.cos(k / 5 * TAU) * 0.225, 0.02, Math.sin(k / 5 * TAU) * 0.225]);
       if (style === 'staff') part(crown, cone(), mat('#66bb6a'), [0.06, 0.16, 0.02], [Math.cos(k / 5 * TAU + 0.6) * 0.24, 0.1, Math.sin(k / 5 * TAU + 0.6) * 0.24], [0, -k / 5 * TAU, 0.4]);
     }
-    if (style === 'cigar') { part(head, cyl(), mat('#6b3e1f'), [0.025, 0.2, 0.025], [0.12, -0.17, 0.33], [0, 0, 1.2]); part(head, sph(), glow('#ff5a1f', 3), [0.03, 0.03, 0.03], [0.21, -0.21, 0.35]); }
-    if (muscle) part(head, cyl(), fabric('#e74c3c'), [0.345, 0.05, 0.345], [0, 0.18, 0]);   // headband
+    if (style === 'cigar') { const o = bobble ? [0.03, -0.1, 0.07] : [0, 0, 0]; part(head, cyl(), mat('#6b3e1f'), [0.025, 0.2, 0.025], [0.12 + o[0], -0.17 + o[1], 0.33 + o[2]], [0, 0, 1.2]); part(head, sph(), glow('#ff5a1f', 3), [0.03, 0.03, 0.03], [0.21 + o[0], -0.21 + o[1], 0.35 + o[2]]); }
+    if (muscle) part(head, cyl(), fabric('#e74c3c'), bobble ? [0.43, 0.06, 0.43] : [0.345, 0.05, 0.345], [0, bobble ? 0.3 : 0.18, bobble ? -0.02 : 0], [bobble ? -0.12 : 0, 0, 0]);   // headband
     // signature prop in the right fist
     const hand = pivot(arms[1], [0, -0.7, 0.12]);
     switch (style) {
@@ -1238,12 +1394,37 @@ window.PTD = window.PTD || {};
       medal.rotation.z = Math.sin(t * 3) * 0.3;
       if (bagPivot) { bagPivot.rotation.x = -arms[0].rotation.x - rig.rotation.x + (moving ? Math.sin(t * 5.5) * 0.15 : 0); bagPivot.rotation.z = -arms[0].rotation.z; }   // tote dangles straight down
     };
-    if (PTD.Toon) PTD.Toon.cartoonize(rig, { width: 3.5, skip: (m) => m === face, style: { bright: 0.5, rim: '#7a5a30' } });
+    if (PTD.Toon) PTD.Toon.cartoonize(rig, { width: 3.0, skip: (m) => m === face && !bobble, style: { bright: 0.5, rim: '#7a5a30' } });
     if (PTD.Toon && stage) PTD.Toon.cartoonize(stage, { width: 3.5, style: { bright: 0.5, rim: '#7a5a30' } });
     const flash = [];
     rig.traverse(o => { if (o.isMesh && o.material && o.material.emissive && !o.material.userData.shared && flash.indexOf(o.material) < 0) flash.push(o.material); });
-    return { rig, anim, flash: flash.slice(0, 6), head, faceMat, face, palms, stage };
+    return { rig, anim, flash: flash.slice(0, 6), head, faceMat, face, palms, stage, bobble };
   }
 
-  PTD.Looters3D = { build, buildBoss, loadModels, MODELS };
+  // Bobblehead face texture: the photo inside a soft oval, fading into a skin tone sampled from the
+  // cheeks, so the picture blends into the sculpted head instead of looking pasted on.
+  function faceComposite(img) {
+    const N = 512, c = document.createElement('canvas'); c.width = c.height = N;
+    const x = c.getContext('2d');
+    const s = document.createElement('canvas'); s.width = s.height = 32;
+    const sx = s.getContext('2d'); sx.drawImage(img, 0, 0, 32, 32);
+    const px = sx.getImageData(0, 0, 32, 32).data;
+    let r = 0, g = 0, b = 0, n = 0;
+    for (const [cx, cy] of [[9, 17], [10, 19], [22, 17], [21, 19], [16, 9]]) { const i = (cy * 32 + cx) * 4; r += px[i]; g += px[i + 1]; b += px[i + 2]; n++; }
+    const skinC = 'rgb(' + Math.round(r / n) + ',' + Math.round(g / n) + ',' + Math.round(b / n) + ')';
+    x.fillStyle = skinC; x.fillRect(0, 0, N, N);
+    // the photo, slightly zoomed so the face fills the front of the head
+    const f = document.createElement('canvas'); f.width = f.height = N;
+    const fx = f.getContext('2d');
+    fx.drawImage(img, -N * 0.17, -N * 0.12, N * 1.34, N * 1.34);
+    fx.globalCompositeOperation = 'destination-in';
+    const gr = fx.createRadialGradient(N / 2, N * 0.5, N * 0.2, N / 2, N * 0.5, N * 0.5);
+    gr.addColorStop(0, 'rgba(0,0,0,1)'); gr.addColorStop(0.8, 'rgba(0,0,0,1)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+    fx.setTransform(0.9, 0, 0, 1.0, N * 0.05, 0);
+    fx.fillStyle = gr; fx.fillRect(-N, -N, N * 3, N * 3);
+    x.drawImage(f, 0, 0);
+    return c;
+  }
+
+  PTD.Looters3D = { build, buildBoss, loadModels, MODELS, KIT, faceComposite };
 })();

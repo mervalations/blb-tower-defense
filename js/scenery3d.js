@@ -108,6 +108,46 @@ window.PTD = window.PTD || {};
       roads.receiveShadow = true;
       S.add(roads);
 
+      // Toy-playset cobbles: real rounded stones (one instanced draw) in running-bond rows over the
+      // paths, each a slightly different golden tone, size and tilt. The flat path underneath turns
+      // into dark mortar. High quality only; the flat cobble texture stays for lower settings.
+      if (r.quality === 'high') {
+        roadMat.color.set('#5e4430');   // the flat path darkens into mortar between the stones
+        const SW = 58, SD = 44, gap = 6;
+        const spots = [];
+        rects.forEach((q) => {
+          const x0 = map.origin + q.x0 * cell, x1 = map.origin + q.x1 * cell, y0 = map.origin + q.y0 * cell, y1 = map.origin + q.y1 * cell;
+          const r0 = Math.floor(y0 / (SD + gap)), r1 = Math.ceil(y1 / (SD + gap));
+          for (let row = r0; row <= r1; row++) {
+            const y = row * (SD + gap) + SD / 2;
+            if (y < y0 + SD * 0.45 || y > y1 - SD * 0.45) continue;
+            const off = (row & 1) ? (SW + gap) / 2 : 0;
+            const c0 = Math.floor((x0 - off) / (SW + gap)), c1 = Math.ceil((x1 - off) / (SW + gap));
+            for (let col = c0; col <= c1; col++) {
+              const x = col * (SW + gap) + off + SW / 2;
+              if (x < x0 + SW * 0.45 || x > x1 - SW * 0.45) continue;
+              spots.push([x, y]);
+            }
+          }
+        });
+        const stone = new T.SphereGeometry(1, 8, 3, 0, Math.PI * 2, 0, Math.PI / 2);   // ~40 triangles a stone
+        const sm = new T.MeshStandardMaterial({ color: '#c9b8a0', roughness: 0.65, envMapIntensity: 0.25 });
+        const stones = new T.InstancedMesh(stone, sm, spots.length);
+        const tones = ['#f2c66d', '#e8a955', '#ffd98a', '#e3a05c', '#f5b867', '#ecc584', '#d99a5e'].map(c => new T.Color(c));
+        const d2 = new T.Object3D(), tc = new T.Color();
+        spots.forEach(([x, y], i) => {
+          d2.position.copy(W2T(x + (rnd() - 0.5) * 5, y + (rnd() - 0.5) * 4, 1.5));
+          d2.rotation.set((rnd() - 0.5) * 0.08, (rnd() - 0.5) * 0.25, (rnd() - 0.5) * 0.08);
+          const k = 0.92 + rnd() * 0.14;
+          d2.scale.set(SW / 2 * k, 9 + rnd() * 5, SD / 2 * k);
+          d2.updateMatrix(); stones.setMatrixAt(i, d2.matrix);
+          tc.copy(tones[Math.floor(rnd() * tones.length)]).multiplyScalar(0.92 + rnd() * 0.16);
+          stones.setColorAt(i, tc);
+        });
+        stones.receiveShadow = true;
+        S.add(stones);
+      }
+
       // each lane gets a soft ribbon of its owner's colour down the middle, sized to the road
       const RIB = 34 * (128 + 64 * (PTD.RULES.roadWiden || 0)) / 192;
       for (const pl of g.players) {
@@ -115,7 +155,7 @@ window.PTD = window.PTD || {};
         for (let i = 1; i < pts.length; i++) {
           const a = pts[i - 1], b = pts[i], dx = b.x - a.x, dy = b.y - a.y, L = Math.hypot(dx, dy) || 1;
           const nx = -dy / L * RIB, ny = dx / L * RIB;
-          const q = [[a.x + nx, a.y + ny], [a.x - nx, a.y - ny], [b.x - nx, b.y - ny], [b.x + nx, b.y + ny]].map(([x, y]) => W2T(x, y, 2.5));
+          const q = [[a.x + nx, a.y + ny], [a.x - nx, a.y - ny], [b.x - nx, b.y - ny], [b.x + nx, b.y + ny]].map(([x, y]) => W2T(x, y, r.quality === 'high' ? 17 : 2.5));   // floats just over the 3D cobbles
           pos.push(...q[0].toArray(), ...q[1].toArray(), ...q[2].toArray(), ...q[0].toArray(), ...q[2].toArray(), ...q[3].toArray());
         }
         const geo = new T.BufferGeometry(); geo.setAttribute('position', new T.Float32BufferAttribute(pos, 3));

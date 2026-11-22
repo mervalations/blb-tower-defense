@@ -344,6 +344,7 @@ window.PTD = window.PTD || {};
       this.towerObjs = new Map(); this.creepObjs = new Map(); this.shotObjs = new Map(); this.fxObjs = new Map();
       this.particles = []; this.dying = []; this.frame = 0; this.slowFrames = 0; this.floaters = []; this.textCache = new Map();
       this.quality = (PTD.Renderer3D.quality || 'high');
+      this.groundH = this.quality === 'high' ? 10 : 0;   // looters walk on top of the 3D cobbles
       this.buildScene();
       this.resize();
     }
@@ -483,7 +484,19 @@ window.PTD = window.PTD || {};
       const goldTrim = std('#f0b92a', { metalness: 0.9, roughness: 0.22, emissive: new T.Color('#3a2400') });
       const body = new T.InstancedMesh(new T.BoxGeometry(1, 1, 1), lacquer, keep.length);
       const trim = new T.InstancedMesh(new T.BoxGeometry(1, 1, 1), goldTrim, keep.length);
-      const cap = new T.InstancedMesh(new T.BoxGeometry(1, 1, 1), velvet, keep.length);
+      const cap = new T.InstancedMesh(geo('pillow', () => {
+        // unit cushion: a rounded-square slab with a domed top (puffed in the middle, tucked at the edges)
+        const g = new T.BoxGeometry(1, 1, 1, 16, 2, 16), p = g.attributes.position;
+        for (let i = 0; i < p.count; i++) {
+          const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
+          const ex = Math.abs(x) * 2, ez = Math.abs(z) * 2, edge = Math.max(ex, ez);
+          const puff = Math.cos(Math.min(1, ex) * Math.PI / 2) * Math.cos(Math.min(1, ez) * Math.PI / 2);
+          const tuck = 1 - 0.1 * Math.pow(edge, 6);
+          p.setXYZ(i, x * tuck, y > 0 ? y + puff * 0.9 : y, z * tuck);
+        }
+        g.computeVertexNormals();
+        return g;
+      }), velvet, keep.length);
       const d = new T.Object3D();
       keep.forEach((r, i) => {
         const w = (r.x1 - r.x0) * cell, h = (r.y1 - r.y0) * cell;
@@ -678,7 +691,7 @@ window.PTD = window.PTD || {};
       const aura = new T.Mesh(geo('aura', () => new T.RingGeometry(1.2, 1.6, 48)), new T.MeshBasicMaterial({ color: new T.Color('#ffcf40').multiplyScalar(0.8), transparent: true, opacity: 0.35, depthWrite: false, blending: T.AdditiveBlending, side: T.DoubleSide }));
       aura.rotation.x = -Math.PI / 2; aura.position.y = 0.03; holder.add(aura);
       this.addHealthBar(root, R * 8.4, 340, true);
-      root.userData = { rig: holder, flash: m.flash, headG: m.head, face: m.face, faceMat: m.faceMat, boss: b, aura, lastHp: c.hp, hitT: 0, faceReady: false, anim: m.anim, palms: m.palms, owner: c.owner };
+      root.userData = { rig: holder, flash: m.flash, headG: m.head, face: m.face, faceMat: m.faceMat, boss: b, aura, lastHp: c.hp, hitT: 0, faceReady: false, anim: m.anim, palms: m.palms, owner: c.owner, bobble: m.bobble };
       this.scene.add(root);
       return root;
     }
@@ -686,7 +699,11 @@ window.PTD = window.PTD || {};
     applyBossFace(ud) {
       if (ud.faceReady) return;
       const im = PTD.Art.bossFace(ud.boss);
-      if (im) {
+      if (im && ud.bobble) {
+        const k = 'bobble' + ud.boss.name;
+        if (!cache.tex[k]) cache.tex[k] = canvasTex(PTD.Looters3D.faceComposite(im));
+        ud.faceMat.map = ud.faceMat.emissiveMap = cache.tex[k]; ud.faceMat.needsUpdate = true; ud.faceReady = true;
+      } else if (im) {
         const t = new T.Texture(im); t.colorSpace = T.SRGBColorSpace; t.needsUpdate = true;
         ud.faceMat.map = t; ud.faceMat.needsUpdate = true; ud.faceReady = true;
       } else if (!ud.boss.image && !ud.drawn) {
@@ -720,9 +737,9 @@ window.PTD = window.PTD || {};
         if (!c.alive) continue;
         seen.add(c.id);
         let o = this.creepObjs.get(c.id);
-        if (!o) { o = c.boss ? this.makeBoss(c) : this.makeLooter(c); this.creepObjs.set(c.id, o); o.position.copy(W2T(c.x, c.y, 0)); }
+        if (!o) { o = c.boss ? this.makeBoss(c) : this.makeLooter(c); this.creepObjs.set(c.id, o); o.position.copy(W2T(c.x, c.y, this.groundH)); }
         const ud = o.userData;
-        const tgt = W2T(c.x, c.y, 0);
+        const tgt = W2T(c.x, c.y, this.groundH);
         o.position.lerp(tgt, Math.min(1, dt * 20));
         // Boss entrance: drop in from the sky spinning, bounce on landing with a shockwave.
         if (c.boss && ud.enterT == null) ud.enterT = 0;
@@ -817,7 +834,14 @@ window.PTD = window.PTD || {};
           this.applyBossFace(ud);
           const camYaw = Math.atan2(this.camera.position.x - o.position.x, this.camera.position.z - o.position.z);
           ud.headG.rotation.y = camYaw - ud.rig.rotation.y;
-          ud.headG.rotation.z = 0;
+          // bobblehead spring: the walk rhythm and every hit set the big head wobbling
+          const bb = ud.bob || (ud.bob = { a: 0, v: 0, b: 0, w: 0 });
+          const walking = !(c.wait > 0) && !(c.stunT > 0) && !(c.fallT > 0);
+          const h = Math.min(dt, 0.05);
+          bb.v += (-bb.a * 140 - bb.v * 6 + (walking ? Math.sin(t * 11) * 3.2 : 0) + (ud.hitT > 0.1 ? (Math.random() - 0.5) * 90 : 0)) * h; bb.a += bb.v * h;
+          bb.w += (-bb.b * 120 - bb.w * 6 + (walking ? Math.cos(t * 5.5) * 2.2 : 0)) * h; bb.b += bb.w * h;
+          ud.headG.rotation.z = Math.max(-0.35, Math.min(0.35, bb.a));
+          ud.headG.rotation.x = Math.max(-0.25, Math.min(0.25, bb.b));
           ud.aura.rotation.z += dt;
           ud.aura.material.opacity = 0.35 + 0.25 * Math.sin(t * 4);
         }

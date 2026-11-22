@@ -52,6 +52,8 @@ The original was built for 8 humans covering each other's lanes, so solo it's br
 | `js/game.js` | Simulation and AI rivals (no DOM; runs headless) |
 | `js/art.js`, `js/render.js` | Procedural art and the 2D renderer |
 | `js/render3d.js` | 3D renderer (Three.js, hand-rolled bloom, raised felt terrain) |
+| `tools/blender/kit.py` | Sculpts the vinyl-toy part kit in Blender (torsos, mitts, sneakers and boots, heads, bobblehead skull and hair, hats, props, loot sack) with baked ambient occlusion and writes `js/kit.js`: `blender -b -P tools/blender/kit.py -- js/kit.js` |
+| `js/kit.js` | The sculpted part kit, compact-encoded for the 3D view (generated) |
 | `tools/blender/looters.py` | Builds looter models in Blender (`blender -b -P tools/blender/looters.py -- assets/models`), then `python tools/embed-models.py` |
 | `js/models.js` | Blender models embedded for the 3D view (generated) |
 | `js/looters3d.js` | 3D looter character kit (heads, hats, props, ghost and dino-rider bodies, walks) and the bosses |
