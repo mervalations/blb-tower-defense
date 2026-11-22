@@ -172,6 +172,7 @@ window.PTD = window.PTD || {};
     const g = new T.Group();
     const m0 = mats && mats.isMaterial ? { main: mats } : (mats || {});
     for (const { role, geo: gg } of KIT[name]) {
+      if (m0[role] === false) continue;           // a role can be left out
       const m = m0[role] || (ROLE[role] ? ROLE[role](m0.main) : null) || m0.main || fabric('#888');
       const mesh = new T.Mesh(gg, m);
       mesh.castShadow = true;
@@ -188,6 +189,8 @@ window.PTD = window.PTD || {};
   }
   // hats and hair are sculpted around a head of radius 1; this puts them on a head of radius r
   const kpHead = (h, name, mats, r, pos, rot) => kp(h, name, mats, r * (PTD.KIT_DATA.k[name] ? 1 / PTD.KIT_DATA.k[name] : 1), pos || [0, 0, 0], rot);
+  // the later pieces are modelled in the game's own units (head space / hand space): place them 1:1
+  const kpU = (parent, name, mats, pos, rot) => kp(parent, name, mats, PTD.KIT_DATA.k[name] ? 1 / PTD.KIT_DATA.k[name] : 1, pos || [0, 0, 0], rot);
 
   // ------------------------------------------------------------------ faces
   function eyes(ctx, head, o) {
@@ -600,6 +603,50 @@ window.PTD = window.PTD || {};
       for (let i = 0; i < 3; i++) ctx.detail.push(part(h, OCTA(), glow(band || '#f5d76e', 1.8), [0.04, 0.04, 0.02], [Math.cos(i * 2.1) * 0.12, 0.42 + i * 0.13, Math.sin(i * 2.1) * 0.1 + 0.06 - i * 0.05]));
       return w;
     }
+    const KH = { ninja: 'h_ninja', headband: 'h_hband', luchador: 'h_luchador', gladiator: 'h_gladiator', afro: 'h_afro', cavehair: 'h_cavehair',
+      clownwig: 'h_clownwig', gnome: 'h_gnome', pith: 'h_pith', nemes: 'h_nemes', wildhair: 'h_wildhair', crown: 'crown', bubble: 'h_collar' };
+    if (KH[kind] && hasKit(KH[kind])) {
+      switch (kind) {
+        case 'ninja': case 'headband': {
+          const bandM = fabric(band || '#e74c3c');
+          if (kind === 'ninja') {
+            if (hasKit('head')) kp(h, 'head', fabric(c), [0.324, 0.354, 0.324], [0, -0.01, -0.004]);   // hood hugging the sculpted head
+            kpU(h, 'h_ninja', { main: fabric(c), band: bandM });
+          }
+          else kpU(h, 'h_hband', bandM);
+          const tails = pivot(h, [0, 0.15, -0.32]); ctx.ears.push(tails);
+          if (hasKit('ribbon')) kpU(tails, 'ribbon', bandM);
+          else for (const s of [-1, 1]) part(tails, box(), bandM, [0.05, 0.02, 0.28], [s * 0.04, -0.05, -0.12], [0.5, s * 0.3, 0]);
+          break;
+        }
+        case 'luchador':
+          // the mask is the sculpted head itself, inflated a touch so it hugs the cheeks; the swooshes and crest sit on top
+          if (hasKit('head')) { kp(h, 'head', fabric(c), [0.322, 0.352, 0.322], [0, -0.01, -0.004]); kpU(h, 'h_luchador', { main: false, band: gloss(band || '#f1c40f') }); }
+          else kpU(h, 'h_luchador', { main: fabric(c), band: gloss(band || '#f1c40f') });
+          break;
+        case 'gladiator': kpU(h, 'h_gladiator', { main: metal(c), metal: metal('#e1b12c'), band: fabric(band || '#c0392b') }); break;
+        case 'afro': kpU(h, 'h_afro', { main: fabric(c), band: gloss('#e74c3c') }); break;
+        case 'cavehair': kpU(h, 'h_cavehair', { main: fabric(c), light: gloss('#f7f2e0') }); break;
+        case 'clownwig':
+          kpU(h, 'h_clownwig', { main: fabric(c), band: fabric(band || '#2ecc71'), glow: gloss('#ff6bcb') });
+          part(h, sph(), ctx.skinM, [0.3, 0.12, 0.3], [0, 0.24, 0]);                                          // bald pate
+          break;
+        case 'gnome': { const tip = pivot(h, [0, 0.2, -0.02]); tip.rotation.x = -0.35; kpU(tip, 'h_gnome', fabric(c)); ctx.ears.push(tip); break; }
+        case 'pith': kpU(h, 'h_pith', { main: fabric(c), band: fabric(band || '#5d4037') }, [0, 0.045, -0.02], [-0.12, 0, 0]); break;   // tipped back off the eyes
+        case 'nemes': kpU(h, 'h_nemes', { main: patterned(c, 'stripes', band || '#2e86de'), metal: metal('#e1b12c') }); break;
+        case 'wildhair': kpU(h, 'h_wildhair', fabric(c)); part(h, sph(), ctx.skinM, [0.29, 0.12, 0.29], [0, 0.25, 0]); break;
+        case 'crown':
+          kpU(h, 'crown', { main: metal('#e1b12c'), trim: metal('#b8861a') }, [0, 0.32, 0]);
+          for (let k = 0; k < 5; k++) ctx.detail.push(part(h, sph(), glow(['#ff4d4d', '#3d8bff', '#2fa35c'][k % 3], 2), [0.03, 0.03, 0.02], [Math.cos(k / 5 * TAU + 0.6) * 0.225, 0.32, Math.sin(k / 5 * TAU + 0.6) * 0.225]));
+          break;
+        case 'bubble':
+          part(h, sph(), glass('#d8f3ff', 0.22), [0.46, 0.46, 0.46], [0, 0.02, 0]);
+          kpU(h, 'h_collar', metal('#bdc3c7'));
+          ctx.detail.push(part(h, sph(), glow('#ffffff', 1.3), [0.06, 0.12, 0.02], [-0.22, 0.22, 0.33], [0, 0, 0.5]));   // glare
+          break;
+      }
+      return;
+    }
     switch (kind) {
       case 'tricorn':
         part(h, tri(), fabric(c), [0.46, 0.06, 0.46], [0, 0.25, 0], [0, Math.PI, 0]).castShadow = true;
@@ -723,6 +770,46 @@ window.PTD = window.PTD || {};
       return true;
     }
     if (kind === 'rollingpin' && hasKit('p_rollingpin')) { kp(p, 'p_rollingpin', { main: wood('#d9a066'), dark: W }, 0.42, [-0.36, 0.12, 0.04], [0, 0, -Math.PI / 2]); return true; }
+    if (kind === 'bottle' && hasKit('p_bottle')) {
+      kp(p, 'p_bottle', { glass: mat('#2ecc71', { transparent: true, opacity: 0.75, roughness: 0.1 }), light: mat('#f4efe2'), dark: mat('#7a5a2c') }, 0.26, [0, -0.03, 0.05]);
+      part(p, cyl(), glow('#7dff8a', 1.8), [0.045, 0.1, 0.045], [0, 0.03, 0.05]);
+      return true;
+    }
+    // hand props modelled 1:1 in hand space: [kit piece, materials by role]
+    const KU = {
+      spear: ['p_spear', () => ({ dark: W, light: steel, band: mat('#5a3a22') })],
+      harpoon: ['p_harpoon', () => ({ dark: W, light: steel, band: mat('#c8a46a') })],
+      axe: ['p_axe', () => ({ dark: W, light: steel, band: mat('#5a3a22') })],
+      hammer: ['p_hammer', () => ({ dark: W, light: metal('#7f8c8d'), metal: steel })],
+      orbstaff: ['p_orbstaff', () => ({ dark: W, glow: glow(o.wandC || '#7fdfff', 2.2), metal: gold })],
+      lasso: ['p_lasso', () => mat('#c8a46a')],
+      pan: ['p_pan', () => ({ dark: mat('#2b2b2b', { metalness: 0.5, roughness: 0.4 }), egg: gloss('#ffffff'), yolk: gloss('#ffc21a') })],
+      cleaver: ['p_cleaver', () => ({ dark: mat('#3b2a1a'), light: steel, metal: steel })],
+      ladle: ['p_ladle', () => ({ light: steel })],
+      brainjar: ['p_brainjar', () => ({ glass: glass('#c7f7ff', 0.4), main: gloss('#f5a3b5'), light: metal('#7f8c8d') })],
+      net: ['p_net', () => ({ dark: W, band: mat('#7a5a2c'), net: mat('#f4f1e8', { transparent: true, opacity: 0.6, side: T.DoubleSide }) })],
+      machete: ['p_machete', () => ({ dark: mat('#3b2a1a'), light: steel, metal: metal('#7f8c8d') })],
+      lantern: ['p_lantern', () => ({ metal: metal('#5d4a2a'), glass: glass('#fff2c0', 0.35), glow: glow(o.lampC || '#ffcf5a', 2.2) })],
+      shovel: ['p_shovel', () => ({ dark: W, light: steel })],
+      pickaxe: ['p_pickaxe', () => ({ dark: W, light: steel })],
+      mallet: ['p_mallet', () => ({ dark: wood('#f1c40f'), main: gloss('#e74c3c'), band: gloss('#ffffff') })],
+      balloon: ['p_balloon', () => ({ light: mat('#eeeeee'), main: gloss(o.balloonC || '#e84393') })],
+      pie: ['p_pie', () => ({ dark: wood('#d9a066'), light: gloss('#ffffff'), glow: glow('#ff4d4d', 1.2) })],
+      flag: ['p_flag', () => ({ light: metal('#bdc3c7'), metal: gold, main: fabric(o.flagC || '#e74c3c') })],
+      goblet: ['p_goblet', () => ({ main: metal('#c0c0c0'), wine: mat('#7f0000'), glow: glow('#ff4d4d', 1.6) })],
+      mic: ['p_mic', () => ({ dark: gloss('#1b1b1b'), light: metal('#bdc3c7'), metal: gold })],
+      discoball: ['p_discoball', () => ({ light: mat('#eeeeee'), metal: metal('#e8ecf2') })],
+      banana: ['p_banana', () => ({ main: gloss('#f7d54a'), dark: mat('#5a3a22') })],
+      cane: ['p_cane', () => ({ dark: gloss('#111111'), metal: metal('#e1b12c') })],
+      wrench: ['p_wrench', () => ({ light: metal('#95a5a6') })],
+      clipboard: ['p_clipboard', () => ({ dark: mat('#a0522d'), light: mat('#fdfdfd'), band: mat('#9aa4ad'), metal: steel })],
+      cups: ['p_cups', () => gloss('#d35400')],
+    };
+    if (KU[kind] && hasKit(KU[kind][0])) {
+      kpU(p, KU[kind][0], KU[kind][1]());
+      if (kind === 'discoball') for (let i = 0; i < 6; i++) ctx.detail.push(part(p, box(), glow(['#ff6bcb', '#7fdfff', '#fff36b'][i % 3], 2), [0.04, 0.04, 0.01], [Math.cos(i) * 0.15, 0.38 + Math.sin(i * 2) * 0.1, Math.sin(i) * 0.15]));
+      return true;
+    }
     switch (kind) {
       case 'cutlass': part(p, cyl(), gold, [0.03, 0.14, 0.03], [0, 0, 0]); part(p, tor(), gold, [0.07, 0.07, 0.07], [0, 0.08, 0.02], [0, Math.PI / 2, 0]);
         part(p, box(), steel, [0.05, 0.55, 0.012], [0.03, 0.38, 0], [0, 0, -0.12]); break;
@@ -1215,9 +1302,11 @@ window.PTD = window.PTD || {};
       part(head, tor(), gold, [0.305, 0.305, 0.25], [0, 0, 0.345]);
     }
     const crown = pivot(head, [0, bobble ? 0.52 : 0.33, 0]);
-    part(crown, cyl(), gold, [0.22, 0.1, 0.22]);
+    const kitCrown = hasKit('crown');
+    if (kitCrown) kpU(crown, 'crown', { main: gold, trim: metal('#b8861a') });
+    else part(crown, cyl(), gold, [0.22, 0.1, 0.22]);
     for (let k = 0; k < 5; k++) {
-      part(crown, cone(), gold, [0.05, 0.18, 0.05], [Math.cos(k / 5 * TAU) * 0.21, 0.13, Math.sin(k / 5 * TAU) * 0.21]);
+      if (!kitCrown) part(crown, cone(), gold, [0.05, 0.18, 0.05], [Math.cos(k / 5 * TAU) * 0.21, 0.13, Math.sin(k / 5 * TAU) * 0.21]);
       part(crown, sph(), glow(['#ff4d4d', '#3d8bff', '#2fa35c', '#ffffff', '#c39bff'][k], 2.2), [0.035, 0.035, 0.035], [Math.cos(k / 5 * TAU) * 0.225, 0.02, Math.sin(k / 5 * TAU) * 0.225]);
       if (style === 'staff') part(crown, cone(), mat('#66bb6a'), [0.06, 0.16, 0.02], [Math.cos(k / 5 * TAU + 0.6) * 0.24, 0.1, Math.sin(k / 5 * TAU + 0.6) * 0.24], [0, -k / 5 * TAU, 0.4]);
     }
@@ -1225,7 +1314,16 @@ window.PTD = window.PTD || {};
     if (muscle) part(head, cyl(), fabric('#e74c3c'), bobble ? [0.43, 0.06, 0.43] : [0.345, 0.05, 0.345], [0, bobble ? 0.3 : 0.18, bobble ? -0.02 : 0], [bobble ? -0.12 : 0, 0, 0]);   // headband
     // signature prop in the right fist
     const hand = pivot(arms[1], [0, -0.7, 0.12]);
-    switch (style) {
+    const BP = {
+      shield: ['b_shield', () => ({ main: fabric('#1f618d'), light: fabric('#f4efe2'), metal: gold }), [0.1, 0, 0.1], [Math.PI / 2, 0, 0.3]],
+      scepter: ['b_scepter', () => ({ main: gold, glow: glow('#c39bff', 2.6) })],
+      martini: ['b_martini', () => ({ glass: mat('#ffffff', { transparent: true, opacity: 0.6, roughness: 0.05 }), light: mat('#e8f4d0', { transparent: true, opacity: 0.8, roughness: 0.1 }), main: mat('#6a8f3a'), dark: mat('#8b5a2b') })],
+      staff: ['b_staff', () => ({ dark: wood('#7a4b2a'), main: mat('#66bb6a') })],
+      muscle: ['b_dumbbell', () => ({ light: metal('#9aa0a6'), dark: metal('#2c2c34') })],
+    };
+    const bp = BP[style] && hasKit(BP[style][0]) ? BP[style] : null;
+    if (bp) kpU(hand, bp[0], bp[1](), bp[2], bp[3]);
+    else switch (style) {
       case 'shield': { const sh2 = part(hand, cyl(), fabric('#1f618d'), [0.38, 0.06, 0.38], [0.1, 0, 0.1], [Math.PI / 2, 0, 0.3]); part(sh2, cyl(), fabric('#f4efe2'), [0.75, 1.05, 0.75]); part(sh2, cyl(), fabric('#1f618d'), [0.55, 1.1, 0.55]); break; }
       case 'scepter': part(hand, cyl(), gold, [0.035, 0.9, 0.035], [0, 0.3, 0]); part(hand, OCTA(), glow('#c39bff', 2.6), [0.1, 0.16, 0.1], [0, 0.8, 0]); break;
       case 'martini': part(hand, cone(), mat('#ffffff', { transparent: true, opacity: 0.6, roughness: 0.05 }), [0.14, 0.14, 0.14], [0, 0.18, 0], [Math.PI, 0, 0]); part(hand, cyl(), mat('#ffffff'), [0.01, 0.12, 0.01], [0, 0.06, 0]); part(hand, sph(), mat('#6a8f3a'), [0.03, 0.03, 0.03], [0.02, 0.2, 0]); break;

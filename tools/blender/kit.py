@@ -45,8 +45,11 @@ def apply_all(ob):
     return ob
 
 
+ORDER = 'XYZ'   # the later pieces use 'ZYX', which matches three.js's default 'XYZ' Euler rotations
+
+
 def place(ob, c=(0, 0, 0), s=(1, 1, 1), rot=(0, 0, 0)):
-    ob.matrix_world = Matrix.Translation(Vector(c)) @ Euler(rot, 'XYZ').to_matrix().to_4x4() @ Matrix.Diagonal(Vector((s[0], s[1], s[2], 1)))
+    ob.matrix_world = Matrix.Translation(Vector(c)) @ Euler(rot, ORDER).to_matrix().to_4x4() @ Matrix.Diagonal(Vector((s[0], s[1], s[2], 1)))
     select_only(ob)
     bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
     return ob
@@ -501,6 +504,8 @@ def prop_pieces():
     piece('p_bottle', {'glass': bt, 'dark': cyl((0, 0.74, 0), 0.085, 0.12, seg=12), 'light': cyl((0, 0.02, 0), 0.225, 0.28, seg=24)}, pivot=(0, -0.2, 0))
 
 
+exec(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'kit_extra.py'), encoding='utf-8').read())
+
 clear()
 body_pieces()
 hand_pieces()
@@ -509,4 +514,8 @@ head_pieces()
 sack_piece()
 hat_pieces()
 prop_pieces()
+ORDER = 'ZYX'
+hat2_pieces()
+prop2_pieces()
+boss_prop_pieces()
 write(OUT)
