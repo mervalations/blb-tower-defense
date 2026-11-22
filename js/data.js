@@ -36,14 +36,17 @@ PTD.MODES = [
   { key: 'classic', name: 'Classic 2.2', hpMult: 1.0, curve: 0, bonusMult: 1, bountyMult: 1, ante: false, desc: 'Exact looter health from the original map. Brutal solo.' },
 ];
 
+// Seat order. Each corner of the table holds two neighbouring lanes (Red+Blue top-left, Teal+Purple
+// top-right, Yellow+Orange bottom-right, Green+Pink bottom-left), so the first four seats go one per
+// corner: players who join get their own corner and their own view instead of sitting beside the host.
 PTD.PLAYERS = [
   { key: 'Red', color: '#e5484d', name: 'You' },
-  { key: 'Blue', color: '#3e7bfa', name: 'Lucky Lou' },
   { key: 'Teal', color: '#12b5a6', name: 'Dice Dana' },
-  { key: 'Purple', color: '#9b5de5', name: 'Velvet Vic' },
   { key: 'Yellow', color: '#f2c12e', name: 'Sunny Sal' },
-  { key: 'Orange', color: '#f2862e', name: 'Rusty Rae' },
   { key: 'Green', color: '#3fbf5f', name: 'Clover Cal' },
+  { key: 'Blue', color: '#3e7bfa', name: 'Lucky Lou' },
+  { key: 'Purple', color: '#9b5de5', name: 'Velvet Vic' },
+  { key: 'Orange', color: '#f2862e', name: 'Rusty Rae' },
   { key: 'Pink', color: '#ef6fb1', name: 'Rosie Ray' },
 ];
 

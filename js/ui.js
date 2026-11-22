@@ -331,8 +331,8 @@
       else if (g.phase === 'hand') sub = p.folded ? 'folded' : p.combined ? p.handTitle : p.dealsLeft > 0 ? 'dealing...' : 'thinking...';
       else sub = p.handTitle || '';
       if (ui.winners.has(p.id)) sub = '★ ' + sub;
-      const cls = 'lb-row' + (p.human ? ' me' : '') + (p.alive ? '' : ' dead') + (ui.winners.has(p.id) ? ' win' : '');
-      return '<div class="' + cls + '"><span class="lb-dot" style="background:' + p.color + '"></span><span class="lb-name">' + esc(p.name) + '</span><span class="lb-gold">' + p.gold + '</span><span class="lb-hand">' + esc(sub) + '</span></div>';
+      const cls = 'lb-row' + (p === g.human ? ' me' : '') + (p.alive ? '' : ' dead') + (ui.winners.has(p.id) ? ' win' : '');
+      return '<div class="' + cls + '"><span class="lb-dot" style="background:' + p.color + '"></span><span class="lb-name">' + esc(p.name) + (p === g.human && g.players.some(q => q !== p && q.human) ? ' (you)' : '') + '</span><span class="lb-gold">' + p.gold + '</span><span class="lb-hand">' + esc(sub) + '</span></div>';
     }).join('');
   }
 

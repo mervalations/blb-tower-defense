@@ -159,8 +159,24 @@ window.PTD = window.PTD || {};
           pos.push(...q[0].toArray(), ...q[1].toArray(), ...q[2].toArray(), ...q[0].toArray(), ...q[2].toArray(), ...q[3].toArray());
         }
         const geo = new T.BufferGeometry(); geo.setAttribute('position', new T.Float32BufferAttribute(pos, 3));
-        const ribbon = new T.Mesh(geo, new T.MeshBasicMaterial({ color: new T.Color(pl.color), transparent: true, opacity: 0.38, depthWrite: false, side: T.DoubleSide }));
+        const mine = pl === g.human && pl.human;
+        const ribbon = new T.Mesh(geo, new T.MeshBasicMaterial({ color: new T.Color(pl.color).multiplyScalar(mine ? 1.5 : 1), transparent: true, opacity: mine ? 0.6 : 0.3, depthWrite: false, side: T.DoubleSide }));
         S.add(ribbon);
+        // your own lane pulses, and a "YOU" sign in your colour bobs over your looter door
+        if (mine) {
+          const s = pts[0];
+          const sign = new T.Sprite(new T.SpriteMaterial({ map: neonText('YOU', pl.color, 512, 160), transparent: true, depthWrite: false, depthTest: false }));
+          sign.scale.set(820, 256, 1); sign.renderOrder = 8; S.add(sign);
+          const arrow = new T.Sprite(new T.SpriteMaterial({ map: neonText('▼', pl.color, 128, 128), transparent: true, depthWrite: false, depthTest: false }));
+          arrow.scale.set(220, 220, 1); arrow.renderOrder = 8; S.add(arrow);
+          updaters.push((t) => {
+            ribbon.material.opacity = 0.5 + Math.sin(t * 3) * 0.18;
+            const bob = Math.sin(t * 2.4) * 30;
+            sign.position.copy(W2T(s.x, s.y, 900 + bob));
+            arrow.position.copy(W2T(s.x, s.y, 690 + bob * 1.4));
+            sign.visible = arrow.visible = pl.alive;
+          });
+        }
       }
 
       // gold curbs wherever the raised felt meets a path
