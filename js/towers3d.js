@@ -23,7 +23,18 @@ window.PTD = window.PTD || {};
   const glass = (c, o) => mat('gl' + c + o, () => new T.MeshStandardMaterial({ color: c, roughness: 0.05, metalness: 0.2, transparent: true, opacity: o || 0.35, depthWrite: false }));
   const add = (o) => mat('a' + o.c + o.k + (o.o || 1), () => new T.MeshBasicMaterial({ color: new T.Color(o.c).multiplyScalar(o.k || 1.5), transparent: true, opacity: o.o || 1, depthWrite: false, blending: T.AdditiveBlending, side: T.DoubleSide }));
 
-  const BOX = () => geo('box', () => new T.BoxGeometry(1, 1, 1));
+  // soft-cornered box: every block on a tower gets rounded edges, like a chunky toy
+  const BOX = () => geo('rbox', () => {
+    const g = new T.BoxGeometry(1, 1, 1, 5, 5, 5), p = g.attributes.position, r = 0.16, v = new T.Vector3(), c = new T.Vector3();
+    for (let i = 0; i < p.count; i++) {
+      v.fromBufferAttribute(p, i);
+      c.set(Math.max(-0.5 + r, Math.min(0.5 - r, v.x)), Math.max(-0.5 + r, Math.min(0.5 - r, v.y)), Math.max(-0.5 + r, Math.min(0.5 - r, v.z)));
+      v.sub(c); if (v.lengthSq() > 0) v.setLength(r); v.add(c);
+      p.setXYZ(i, v.x, v.y, v.z);
+    }
+    g.computeVertexNormals();
+    return g;
+  });
   const CYL = (n) => geo('cyl' + (n || 20), () => new T.CylinderGeometry(1, 1, 1, n || 20));
   const CONE = (n) => geo('cone' + (n || 20), () => new T.ConeGeometry(1, 1, n || 20));
   const SPH = () => geo('sph', () => new T.SphereGeometry(1, 24, 16));
@@ -224,30 +235,13 @@ window.PTD = window.PTD || {};
 
   // ------------------------------------------------------------------ pieces
   function plinth(root, ownerColor, radius, h) {
-    P(root, HEX(), stone('#4a4640'), [radius, h, radius], [0, h / 2, 0]);
-    P(root, HEX(), stone('#5e5852'), [radius * 0.86, 6, radius * 0.86], [0, h + 3, 0]);
+    // a squat, rounded mossy stone with a cushion of grass on top
+    P(root, CYL(16), stone('#7a7266'), [radius, h, radius], [0, h / 2, 0]);
+    P(root, SPH(), std('#5fae46', { roughness: 0.9 }), [radius * 0.92, 7, radius * 0.92], [0, h + 1, 0]);
     const ring = P(root, TOR(0.08), glow(ownerColor, 2.2), [radius * 0.93, radius * 0.93, radius * 0.93], [0, h * 0.55, 0], [Math.PI / 2, 0, 0]);
     ring.castShadow = false;
     return h + 6;
   }
-  function chipStack(root, y, color, n, radius) {
-    const side = mat('chipS' + color, () => {
-      const c = document.createElement('canvas'); c.width = 256; c.height = 16;
-      const x = c.getContext('2d'); x.fillStyle = color; x.fillRect(0, 0, 256, 16);
-      x.fillStyle = '#f4efe2'; for (let i = 0; i < 8; i++) x.fillRect(i * 32 + 6, 0, 12, 16);
-      const t = new T.CanvasTexture(c); t.colorSpace = T.SRGBColorSpace;
-      return new T.MeshStandardMaterial({ map: t, roughness: 0.3, metalness: 0.1 });
-    });
-    const face = std(color, { roughness: 0.3 });
-    for (let i = 0; i < n; i++) {
-      const c = new T.Mesh(CYL(32), [side, face, face]);
-      c.scale.set(radius, 11, radius); c.position.set(((i * 37) % 5) - 2, y + 6 + i * 11.5, ((i * 53) % 5) - 2); c.rotation.y = i * 0.7;
-      c.castShadow = c.receiveShadow = true;
-      root.add(c);
-    }
-    return y + n * 11.5 + 4;
-  }
-
   // ------------------------------------------------------------------ single-card towers
   function clubsTower(root, y, col) {
     // wooden archer post with a crossbow
@@ -429,16 +423,27 @@ window.PTD = window.PTD || {};
       const b = [clubsTower, diamondsTower, heartsTower, spadesTower][t.suit](root, y, col);
       Object.assign(parts, b);
       top = b.top;
+      // every card tower is a little character: a pair of googly eyes that follow its aim and blink
+      const E = [[y + 128, 46, 11], [y + 26, 36, 10], [y + 62, 25, 10], [y + 30, 47, 12]][t.suit];
+      const eyes = group(root, [0, E[0], E[1]], true);
+      parts.eyes = [];
+      for (const sx of [-1, 1]) {
+        const ball = P(eyes, SPH(), std('#ffffff', { roughness: 0.25 }), [E[2], E[2] * 1.2, E[2] * 0.7], [sx * E[2] * 1.05, 0, 0]);
+        const pupil = P(ball, SPH(), std('#141414', { roughness: 0.2 }), [0.5, 0.5, 0.5], [0, 0, 0.75]);
+        P(pupil, SPH(), glow('#ffffff', 1.4), [0.32, 0.32, 0.32], [0.35, 0.35, 0.8]).castShadow = false;
+        parts.eyes.push({ ball, pupil });
+      }
+      parts.blinkT = 1 + (t.id % 7) * 0.6;
     } else {
       const C = PTD.COMBOS[t.type];
       const y0 = plinth(root, ownerColor, 62, 14);
-      const y = chipStack(root, y0, C.color, 2 + Math.min(4, t.type), 58);
+      const y = y0;
       const b = COMBO[t.type](root, y, C.color, t);
       Object.assign(parts, b);
       top = b.top;
     }
     mergeStatic(root, t.id);
-    cartoonize(root);
+    cartoonize(root, { width: 7, style: { bright: 0.62, rim: '#fff1d0' } });
 
     // the card itself floats above the tower; combos get their hand orbiting instead
     const banner = group(root, [0, top + 46, 0], true);
@@ -470,6 +475,14 @@ window.PTD = window.PTD || {};
       if (parts.barrelSpin) parts.barrelSpin.rotation.z += dt * (firing ? 22 : 2);
       if (parts.hammer) parts.hammer.position.y = (parts.hammerY || (parts.hammerY = parts.hammer.position.y)) + (firing ? -18 : Math.sin(time * 1.2) * 6);
       if (parts.orbit) parts.orbit.rotation.y += dt * (0.4 + t.type * 0.06);
+      if (parts.eyes) {
+        // pupils follow the gun (or wander idly), and the eyes blink every few seconds
+        const look = parts.head ? Math.sin(parts.head.rotation.y) : Math.sin(time * 0.7 + t.id) * 0.8;
+        const up = parts.head ? 0 : Math.sin(time * 0.5 + t.id * 2) * 0.25;
+        parts.blinkT -= dt; if (parts.blinkT <= 0) parts.blinkT = 2.5 + ((t.id * 13 + Math.floor(time)) % 5) * 0.7;
+        const shut = parts.blinkT < 0.13 ? 0.12 : firing ? 1.25 : 1;
+        for (const e of parts.eyes) { e.pupil.position.x = look * 0.45; e.pupil.position.y = up * 0.4; e.ball.scale.y = e.ball.userData.sy || (e.ball.userData.sy = e.ball.scale.y); e.ball.scale.y = e.ball.userData.sy * shut; }
+      }
     };
     return { root, head: parts.head, banner, anim, scale, height: (top + 90) * scale };
   }

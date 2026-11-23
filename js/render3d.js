@@ -659,7 +659,7 @@ window.PTD = window.PTD || {};
         o.anim(time, dt, firing && !stunned);
         if (firing) o.kick = 1;
         o.kick = Math.max(0, (o.kick || 0) - dt * 5);
-        const sq = 1 - Math.sin(o.kick * Math.PI) * 0.1, idle = 1 + Math.sin(time * 2.2 + t.id) * 0.012;
+        const sq = 1 - Math.sin(o.kick * Math.PI) * 0.17, idle = 1 + Math.sin(time * 2.2 + t.id) * 0.028;   // rubbery recoil and a breathing idle
         o.grp.scale.set(o.grp.scale.x / Math.sqrt(sq), o.grp.scale.y * sq * idle, o.grp.scale.z / Math.sqrt(sq));
         if (o.tag) o.tag.visible = focus === t;
       }
@@ -935,7 +935,7 @@ window.PTD = window.PTD || {};
         if (me && o.userData.owner === me.id && !big) sound(o.userData.leader ? 'leaderPop' : 'pop');
         const at = o.position.clone();
         this.poof(at.clone().setY(70), big ? 14 : 7, big ? 1.8 : 1);
-        this.burst(at.clone().setY(110), '#ffe066', big ? 18 : 7, big ? 520 : 300, 0.5);
+        this.burst(at.clone().setY(110), '#ffe066', big ? 10 : 4, big ? 520 : 300, 0.5);
         this.burst(at.clone().setY(90), '#ffffff', big ? 10 : 4, 260, 0.3);
         if (o.userData_hp) o.userData_hp.grp.visible = false;
         this.dying.push({ o, t: 0, spin: (Math.random() < 0.5 ? -1 : 1) * (10 + Math.random() * 8), dx: (Math.random() - 0.5) * 260, dz: (Math.random() - 0.5) * 260, x0: at.x, z0: at.z });
@@ -1158,7 +1158,7 @@ window.PTD = window.PTD || {};
           S.add(s); return s;
         }
         case 'coins':
-          this.coinShower(W2T(f.x, f.y, 90), Math.min(Math.ceil((f.n || 6) / 2), 14));
+          this.coinShower(W2T(f.x, f.y, 90), Math.max(1, Math.min(7, Math.round((f.n || 6) / 3.6))));   // 2 coins a looter, 5 a boss
           this.burst(W2T(f.x, f.y, 90), '#ffd34d', 3, 160, 0.3);
           if ((f.n || 0) > 10) this.shake = Math.max(this.shake, 40);
           return null;
