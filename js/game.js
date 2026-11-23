@@ -246,7 +246,7 @@ PTD.Game = class {
         id: this.nextId++, owner: p.id, def, level: this.level, x: start.x, y: start.y, dir: 0,
         dist: 0, hp, maxHp: hp, speed: PTD.RULES.creepSpeed * (isBoss ? PTD.RULES.bossSpeed : 1), slowT: 0, slowF: 1, stunT: 0,
         poisonT: 0, poisonDps: 0, bleed: false, alive: true,
-        boss: isBoss, bossIdx, wait: isBoss ? 4.5 : 0, atkT: 3, phaseOff: this.rng() * 6.28,
+        boss: isBoss, bossIdx, wait: isBoss ? 4.5 : 0, atkT: 5, phaseOff: this.rng() * 6.28,
         radius: isBoss ? 85 : 42,
         // crew member 0..2, or 3 for the wave's leader (the last looter); purely cosmetic
         variant: isBoss ? 0 : (this.spawned === this.toSpawn - 1 ? 3 : this.spawned % 3),
@@ -629,23 +629,55 @@ PTD.Game = class {
     const R = PTD.RULES.tripStunRadius, hit = [];
     for (const t of this.towers) {
       if (!t.alive || Math.hypot(t.x - c.x, t.y - c.y) > R) continue;
-      t.stunT = PTD.RULES.tripStun; hit.push(t);
+      t.stunT = PTD.RULES.tripStun; t.stunKind = 'trip'; hit.push(t);
     }
     this.fx.push({ kind: 'ring', x: c.x, y: c.y, t: 0, life: 0.6, color: '#ffe066', r: R });
     if (hit.length) this.floatText(c.x, c.y + 170, 'PARALYZED!', '#ffe066');
     this.emit('towersStunned', { creep: c, towers: hit });
   }
 
-  bossAttack(c) {
+  // Bosses telegraph every attack: they plant their feet and a warning circle marks the spot for
+  // BOSS_WIND seconds, then the strike lands there. Each boss disrupts towers in its own way.
+  bossTargets(c) {
     const p = this.players[c.owner];
-    const mine = this.towers.filter(t => t.alive && t.owner === p.id && !t.stats.invuln);
-    if (!mine.length) return;
-    const quads = mine.filter(t => t.kind === 'combo' && t.type === 7);
-    const pool = quads.length ? quads : mine;
-    const target = pool[Math.floor(this.rng() * pool.length)];
-    this.shots.push({ x: c.x, y: c.y + 80, tx: target.x, ty: target.y, speed: 700, fx: 'mortar', targetTower: target, tower: { stats: {} }, arc: true, sx: c.x, sy: c.y + 80 });
-    this.emit('bossAttack', { creep: c, tower: target });
+    return this.towers.filter(t => t.alive && t.owner === p.id && !t.stats.invuln);
   }
+
+  bossWindup(c) {
+    const mine = this.bossTargets(c);
+    if (!mine.length) return;
+    const attack = PTD.BOSSES[c.bossIdx].attack || 'mortar';
+    let pool;
+    if (attack === 'mortar') { const quads = mine.filter(t => t.kind === 'combo' && t.type === 7); pool = quads.length ? quads : mine; }
+    else { const close = mine.filter(t => Math.hypot(t.x - c.x, t.y - c.y) < 900); pool = close.length ? close : mine; }
+    const target = pool[Math.floor(this.rng() * pool.length)];
+    c.windT = PTD.BOSS_WIND; c.windTarget = target; c.windX = target.x; c.windY = target.y;
+    this.emit('bossWindup', { creep: c, x: target.x, y: target.y, r: PTD.BOSS_ATTACKS[attack].r, attack });
+  }
+
+  bossStrike(c) {
+    const attack = PTD.BOSSES[c.bossIdx].attack || 'mortar', A = PTD.BOSS_ATTACKS[attack];
+    let target = c.windTarget; c.windTarget = null;
+    if (!target || !target.alive) return;
+    if (attack === 'mortar') {
+      this.shots.push({ x: c.x, y: c.y + 80, tx: target.x, ty: target.y, speed: 700, fx: 'mortar', targetTower: target, tower: { stats: {} }, arc: true, sx: c.x, sy: c.y + 80 });
+      this.emit('bossAttack', { creep: c, tower: target, towers: [target], attack });
+      return;
+    }
+    const mine = this.bossTargets(c);
+    const hit = attack === 'hex' ? [target] : mine.filter(t => Math.hypot(t.x - target.x, t.y - target.y) < A.r);
+    for (const t of hit) {
+      if (attack === 'smoke') t.smokeT = Math.max(t.smokeT || 0, A.time);
+      else { t.stunT = Math.max(t.stunT || 0, A.time); t.stunKind = attack; }
+      if (attack === 'hex') t.cool = Math.max(t.cool, t.stats.cd * 2);
+    }
+    this.fx.push({ kind: 'ring', x: target.x, y: target.y, t: 0, life: 0.6, color: A.color, r: A.r });
+    this.floatText(target.x, target.y + 130, A.label, A.color);
+    this.emit('bossAttack', { creep: c, tower: target, towers: hit, attack });
+  }
+
+  // kept for tools and tests: wind up and strike at once
+  bossAttack(c) { this.bossWindup(c); if (c.windTarget) { c.windT = 0; this.bossStrike(c); } }
 
   // ---------- main update ----------
   update(dt) {
@@ -697,6 +729,11 @@ PTD.Game = class {
         }
         c.quaked = false;
       }
+      if (c.windT > 0) {                  // planted, winding up an attack
+        c.windT -= dt;
+        if (c.windT <= 0) this.bossStrike(c);
+        continue;
+      }
       if (c.stunT > 0) { c.stunT -= dt; continue; }
       if (c.slowT > 0) { c.slowT -= dt; if (c.slowT <= 0) c.slowF = 1; }
       const L = this.players[c.owner].lane;
@@ -704,9 +741,9 @@ PTD.Game = class {
       const pt = this.pointAt(L, c.dist);
       c.x = pt.x; c.y = pt.y; if (pt.dir != null) c.dir = pt.dir;
       if (c.dist >= L.len) { this.leak(c); continue; }
-      if (c.def.final) {
+      if (c.boss && !c.trips) {
         c.atkT -= dt;
-        if (c.atkT <= 0) { c.atkT = 3; if (this.rng() < 0.5 && c.dist < L.len * 0.9) this.bossAttack(c); }
+        if (c.atkT <= 0) { c.atkT = c.def.final ? 6 : 8; if (c.dist < L.len * 0.9) this.bossWindup(c); }
       }
     }
     if (this.creeps.length > 64 && this.creeps.some(c => !c.alive)) this.creeps = this.creeps.filter(c => c.alive);
@@ -716,11 +753,12 @@ PTD.Game = class {
     for (const t of this.towers) {
       if (!t.alive) continue;
       if (t.flash > 0) t.flash -= dt;
+      if (t.smokeT > 0) t.smokeT = Math.max(0, t.smokeT - dt);
       if (t.stunT > 0) { t.stunT -= dt; continue; }   // paralyzed: no firing, cooldown frozen
       t.cool -= dt;
       if (t.cool > 0) continue;
       const c = this.findTarget(t);
-      if (c) { this.fire(t, c); t.cool = t.stats.cd; } else t.cool = 0;
+      if (c) { if (!(t.smokeT > 0 && this.rng() < 0.55)) this.fire(t, c); t.cool = t.stats.cd; } else t.cool = 0;
     }
   }
 

@@ -144,7 +144,13 @@
         break;
       case 'leak': if (d.player === me) { A.play('leak'); flashGold(); } break;
       case 'defeat': if (d.player !== me) toast(d.player.name + ' went broke!'); break;
-      case 'bossAttack': if (d.creep.owner === me.id && performance.now() > ui.shellWarned) { ui.shellWarned = performance.now() + 8000; A.clip(PTD.BOSS_ATTACK_SFX); toast(PTD.BOSSES[d.creep.bossIdx].name + ' is shelling your towers!', true); } break;
+      case 'bossAttack': {
+        if (d.creep.owner !== me.id) break;
+        const atk = d.attack || 'mortar', key = 'warned_' + atk;
+        if (atk === 'mortar') { if (performance.now() > (ui[key] || 0)) { ui[key] = performance.now() + 8000; A.clip(PTD.BOSS_ATTACK_SFX); toast(PTD.BOSSES[d.creep.bossIdx].name + ' ' + PTD.BOSS_ATTACKS.mortar.warn, true); } }
+        else { A.play({ smoke: 'splat', slam: 'slam', hex: 'dizzy', roots: 'thud' }[atk] || 'boom'); if (performance.now() > (ui[key] || 0)) { ui[key] = performance.now() + 6000; toast(PTD.BOSSES[d.creep.bossIdx].name + ' ' + PTD.BOSS_ATTACKS[atk].warn, true); } }
+        break;
+      }
       case 'towerDestroyed': if (d.tower.owner === me.id) A.play('boom'); break;
       case 'towersStunned': {
         const n = d.towers.filter(t => t.owner === me.id).length;
@@ -305,8 +311,8 @@
     if (g.phase !== 'hand') return '';
     if (p.ready) return 'Ready! Waiting for the other gamblers...';
     if (p.folded) return 'You folded. No looters for you this round. Press <b>Ready</b>.';
-    const carpet = '<b style="color:' + p.color + '">carpet</b>';
-    if (p.dealsLeft === 5) return 'Click the felt next to your ' + carpet + ' to deal 5 cards. Want better odds? <b>Tip the dealer</b> first.';
+    const carpet = '<b style="color:' + p.color + '">road</b>';
+    if (p.dealsLeft === 5) return 'Click the grass beside your ' + carpet + ' to deal 5 cards. Want better odds? <b>Tip the dealer</b> first.';
     if (p.dealsLeft > 0) return 'Deal ' + p.dealsLeft + ' more card' + (p.dealsLeft > 1 ? 's' : '') + '. Each card is a tower.';
     if (p.combined) return 'Locked in: <b>' + p.handTitle + '</b>. Press <b>Ready</b> when you\'re set.';
     const combo = g.selectionCombo(p);
@@ -519,7 +525,7 @@
     if (g.phase === 'hand' && me.alive && !me.folded && me.dealsLeft > 0) {
       const s = g.map.snap(w.x, w.y);
       if (g.deal(me, s.x, s.y)) hover(sx, sy);
-      else { A.play('error'); toast("Can't deal there. Use open felt, not the carpet.", true); }
+      else { A.play('error'); toast("Can't deal there. Use open grass beside the road.", true); }
     }
   }
 

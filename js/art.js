@@ -139,34 +139,65 @@ PTD.Art = (function () {
     const at = (cx, cy) => (cx < 0 || cy < 0 || cx >= N || cy >= N) ? 2 : g[cy * N + cx];
     let seed = 7;
     const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+    // smooth value noise + fractal sum, for organic patches instead of grid-aligned shading
+    const hash = (i, j) => { let h = (i * 374761393 + j * 668265263) | 0; h = (h ^ (h >>> 13)) * 1274126177 | 0; return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
+    const vnoise = (x0, y0) => {
+      const i = Math.floor(x0), j = Math.floor(y0), fx = x0 - i, fy = y0 - j;
+      const u = fx * fx * (3 - 2 * fx), v = fy * fy * (3 - 2 * fy);
+      const a = hash(i, j), b = hash(i + 1, j), c2 = hash(i, j + 1), d2 = hash(i + 1, j + 1);
+      return a + (b - a) * u + (c2 - a) * v + (a - b - c2 + d2) * u * v;
+    };
+    const fbm = (x0, y0) => vnoise(x0, y0) * 0.55 + vnoise(x0 * 2.1 + 17, y0 * 2.1 + 9) * 0.3 + vnoise(x0 * 4.3 + 3, y0 * 4.3 + 41) * 0.15;
+    // distance (in cells) from a road pixel to the nearest grass edge, so grass can creep over the road
+    const grassNear = (cx, cy, fx, fy) => {
+      let d = 9;
+      if (at(cx - 1, cy) === 0) d = Math.min(d, fx); if (at(cx + 1, cy) === 0) d = Math.min(d, 1 - fx);
+      if (at(cx, cy - 1) === 0) d = Math.min(d, fy); if (at(cx, cy + 1) === 0) d = Math.min(d, 1 - fy);
+      return d;
+    };
     for (let py = 0; py < px; py++) {
       const wy = (px - 1 - py) * upp + map.origin;          // screen row 0 = top of map
       const cy = Math.floor((wy - map.origin) / map.cell);
       for (let pxl = 0; pxl < px; pxl++) {
         const wx = pxl * upp + map.origin;
         const cx = Math.floor((wx - map.origin) / map.cell);
-        const v = at(cx, cy);
+        let v = at(cx, cy);
         const n = rnd() * 10 - 5;
         let r, gg, b;
-        if (v === 0) {
-          // casino felt with a faint diamond lattice
-          const lat = ((Math.abs(((wx + wy) % 512 + 512) % 512 - 256) < 6) || (Math.abs(((wx - wy) % 512 + 512) % 512 - 256) < 6)) ? 8 : 0;
-          const drift = Math.sin(wx * 0.0011 + Math.sin(wy * 0.0007) * 2) * Math.cos(wy * 0.0009 - wx * 0.0004);   // soft pools of light and shade
-          r = 22 + n * 0.8 + lat + drift * 8; gg = 128 + n + lat * 1.5 + drift * 20; b = 68 + n + lat + drift * 6;
-        } else if (v === 1) {
-          // carpet runner; gold trim where it meets the felt
+        if (v === 1) {
+          // old dirt road: grass creeps in from the verges in ragged tufts
           const fx = (wx - map.origin) / map.cell - cx, fy = (wy - map.origin) / map.cell - cy;
-          const edge = (fx < 0.22 && at(cx - 1, cy) === 0) || (fx > 0.78 && at(cx + 1, cy) === 0) ||
-                       (fy < 0.22 && at(cx, cy - 1) === 0) || (fy > 0.78 && at(cx, cy + 1) === 0);
-          if (edge) { r = 214 + n; gg = 170 + n; b = 72 + n; }
-          else {
-            const pat = ((Math.floor(wx / 64) + Math.floor(wy / 64)) & 1) ? 5 : 0;
-            r = 46 + n * 0.5 + pat; gg = 42 + n * 0.5 + pat; b = 50 + n * 0.5 + pat;
-          }
+          const d = grassNear(cx, cy, fx, fy), ragged = 0.16 + fbm(wx / 70, wy / 70) * 0.42;
+          if (d < ragged) v = 0;
+          else if (d < ragged + 0.12) v = 3;          // a darker, trampled verge right at the edge
+        }
+        if (v === 0) {
+          // lush grass: broad light/dark patches, clover clumps and blade speckle
+          const big = fbm(wx / 900, wy / 900), mid = fbm(wx / 220 + 50, wy / 220 + 50), clover = vnoise(wx / 90, wy / 90) > 0.78 ? 1 : 0;
+          const k = (big - 0.5) * 2, m = (mid - 0.5) * 2;
+          r = 86 + k * 16 + m * 8 + n * 1.2 - clover * 10;
+          gg = 136 + k * 20 + m * 12 + n * 1.6 - clover * 6;
+          b = 62 + k * 8 + m * 4 + n - clover * 6;
+        } else if (v === 3) {
+          r = 92 + n; gg = 102 + n; b = 50 + n;
+        } else if (v === 1) {
+          // packed earth: warm, mottled, with damp dark patches and light pebbles
+          const k = (fbm(wx / 300, wy / 300) - 0.5) * 2, damp = vnoise(wx / 160 + 9, wy / 160 + 3) > 0.72 ? 1 : 0;
+          const pebble = hash(Math.floor(wx / 14), Math.floor(wy / 14)) > 0.965 ? 1 : 0;
+          r = 156 + k * 18 + n * 1.5 - damp * 26 + pebble * 40;
+          gg = 118 + k * 14 + n * 1.2 - damp * 22 + pebble * 38;
+          b = 78 + k * 10 + n - damp * 14 + pebble * 34;
         } else {
+          // under the hedges: dark leaf litter; the vault clearing is old flagstone
           const centre = Math.abs(wx) < 700 && Math.abs(wy) < 700;
-          if (centre) { r = 60 + n; gg = 48 + n; b = 30 + n; }
-          else { const grain = Math.sin(wy * 0.02 + Math.sin(wx * 0.003) * 3) * 4; r = 38 + n * 0.6 + grain; gg = 26 + n * 0.5 + grain * 0.7; b = 22 + n * 0.5 + grain * 0.5; }
+          const k = (fbm(wx / 120, wy / 120) - 0.5) * 2;
+          if (cx < 16 || cy < 16 || cx >= N - 16 || cy >= N - 16) {   // the border strip where the crowd stands
+            const big = (fbm(wx / 500, wy / 500) - 0.5) * 2;
+            r = 90 + big * 12 + k * 6 + n; gg = 138 + big * 16 + k * 8 + n * 1.4; b = 64 + big * 6 + n;
+            const i2 = (py * px + pxl) * 4; d[i2] = r; d[i2 + 1] = gg; d[i2 + 2] = b; d[i2 + 3] = 255; continue;
+          }
+          if (centre) { const seam = (Math.abs(((wx % 160) + 160) % 160 - 80) > 74 || Math.abs(((wy % 160) + 160) % 160 - 80) > 74) ? -26 : 0; r = 150 + k * 14 + seam + n; gg = 140 + k * 12 + seam + n; b = 118 + k * 10 + seam + n; }
+          else { r = 58 + k * 12 + n; gg = 70 + k * 14 + n; b = 36 + k * 6 + n; }
         }
         const i = (py * px + pxl) * 4;
         d[i] = r; d[i + 1] = gg; d[i + 2] = b; d[i + 3] = 255;
@@ -176,16 +207,26 @@ PTD.Art = (function () {
     const toPx = (wx, wy) => [(wx - map.origin) / upp, px - (wy - map.origin) / upp];
     // vignette
     const vg = x.createRadialGradient(px / 2, px / 2, px * 0.2, px / 2, px / 2, px * 0.75);
-    vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,0.45)');
+    vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,0.22)');
     x.fillStyle = vg; x.fillRect(0, 0, px, px);
+    // worn cart ruts down every road
+    x.save(); x.lineJoin = 'round'; x.lineCap = 'round'; x.strokeStyle = 'rgba(70,45,20,0.16)'; x.lineWidth = 9 / upp;
+    for (const p of players) for (const off of [-30, 30]) {
+      x.beginPath();
+      const pts = p.lane.path;
+      pts.forEach((pt, i) => {
+        const a2 = pts[Math.max(0, i - 1)], b2 = pts[Math.min(pts.length - 1, i + 1)], dx = b2.x - a2.x, dy = b2.y - a2.y, L = Math.hypot(dx, dy) || 1;
+        const q = toPx(pt.x - dy / L * off, pt.y + dx / L * off); i ? x.lineTo(q[0], q[1]) : x.moveTo(q[0], q[1]);
+      });
+      x.stroke();
+    }
+    x.restore();
     // lane colour runners
     for (const p of players) {
       x.save();
-      x.strokeStyle = p.color; x.globalAlpha = 0.5; x.lineWidth = 64 * (128 + 64 * (PTD.RULES.roadWiden || 0)) / 192 / upp; x.lineJoin = 'round'; x.lineCap = 'round';
+      x.strokeStyle = p.color; x.globalAlpha = 0.28; x.lineWidth = 64 * (128 + 64 * (PTD.RULES.roadWiden || 0)) / 192 / upp; x.lineJoin = 'round'; x.lineCap = 'round';
       x.beginPath();
       p.lane.path.forEach((pt, i) => { const q = toPx(pt.x, pt.y); i ? x.lineTo(q[0], q[1]) : x.moveTo(q[0], q[1]); });
-      x.stroke();
-      x.globalAlpha = 0.9; x.strokeStyle = '#ffffff'; x.setLineDash([30 / upp, 130 / upp]); x.lineWidth = 10 / upp;
       x.stroke();
       x.restore();
       // spawn door

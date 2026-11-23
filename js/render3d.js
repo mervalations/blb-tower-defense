@@ -11,7 +11,12 @@ window.PTD = window.PTD || {};
   const W2T = (x, y, h) => new T.Vector3(x, h || 0, -y);
   const sound = (name, arg) => { if (PTD.Audio) PTD.Audio.play(name, arg); };
   const fmtDmg = (n) => n >= 10000 ? (n / 1000).toFixed(n >= 100000 ? 0 : 1) + 'k' : String(Math.round(n));
-  const FELT_H = 44;   // buildable felt is raised; lanes are channels cut into the table
+  const smoothstep = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+  const GRADE_DUSK = new T.Color(1.08, 0.86, 0.72), GRADE_NIGHT = new T.Color(0.34, 0.42, 0.7);
+  const DUSK_C = new T.Color('#ff9a5c'), DUSK_SKY = new T.Color('#ffb08a');
+  const HEMI_DAY = { sky: new T.Color(0xd8efff), ground: new T.Color(0x7d8f55) }, HEMI_NIGHT = { sky: new T.Color(0x4a62b8), ground: new T.Color(0x18222e) };
+  const FOG_DAY = new T.Color(0xb9dccf), FOG_NIGHT = new T.Color(0x2e4170), FOG_DUSK = new T.Color(0xf0a888);
+  const FELT_H = 24;   // buildable grass is a low raised bank; the roads run between
 
   // ---------------------------------------------------------------- shared resources
   const cache = { mats: {}, tex: {}, geo: {}, text: new Map() };
@@ -171,6 +176,29 @@ window.PTD = window.PTD || {};
     return (cache.tex.velvet = t);
   }
 
+  // Dense hedge foliage: overlapping leaf clusters with light tops and dark gaps (tiles seamlessly).
+  function leafTexture() {
+    if (cache.tex.leaf) return cache.tex.leaf;
+    const c = document.createElement('canvas'); c.width = c.height = 256;
+    const x = c.getContext('2d');
+    x.fillStyle = '#1f4a1c'; x.fillRect(0, 0, 256, 256);
+    let sd = 11; const rn = () => { sd = (sd * 16807) % 2147483647; return sd / 2147483647; };
+    const cols = ['#2f6b2a', '#3f8a32', '#4f9e3a', '#5fb246', '#3a7d30', '#6cc04e'];
+    for (let i = 0; i < 520; i++) {
+      const cx = rn() * 256, cy = rn() * 256, r = 7 + rn() * 12, a = rn() * TAU, col = cols[Math.floor(rn() * cols.length)];
+      for (const ox of [-256, 0, 256]) for (const oy of [-256, 0, 256]) {
+        if (cx + ox < -24 || cx + ox > 280 || cy + oy < -24 || cy + oy > 280) continue;
+        x.save(); x.translate(cx + ox, cy + oy); x.rotate(a);
+        const g = x.createLinearGradient(0, -r, 0, r); g.addColorStop(0, PTD.Art.shade(col, 0.25)); g.addColorStop(1, PTD.Art.shade(col, -0.3));
+        x.fillStyle = g; x.beginPath(); x.ellipse(0, 0, r, r * 0.55, 0, 0, TAU); x.fill();
+        x.strokeStyle = 'rgba(255,255,255,0.12)'; x.lineWidth = 1.2; x.beginPath(); x.moveTo(-r * 0.8, 0); x.lineTo(r * 0.8, 0); x.stroke();
+        x.restore();
+      }
+    }
+    const t = canvasTex(c); t.wrapS = t.wrapT = T.RepeatWrapping;
+    return (cache.tex.leaf = t);
+  }
+
   function toonRamp() {
     if (cache.tex.ramp) return cache.tex.ramp;
     const t = new T.DataTexture(new Uint8Array([150, 150, 150, 255, 210, 210, 210, 255, 255, 255, 255, 255]), 3, 1, T.RGBAFormat);
@@ -225,7 +253,7 @@ window.PTD = window.PTD || {};
       gl_FragColor = vec4(vec3(s / 4.333), 1.0); }`;
   const COMP_FS = `uniform sampler2D tScene; uniform sampler2D tB1; uniform sampler2D tB2; uniform float strength;
     uniform sampler2D tAO; uniform float aoK; uniform sampler2D tSoft; uniform float tilt;
-    uniform float exposure; uniform float flash; uniform vec3 flashColor; varying vec2 vUv;
+    uniform float exposure; uniform vec3 grade; uniform float flash; uniform vec3 flashColor; varying vec2 vUv;
     vec3 aces(vec3 x){ return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0); }
     void main(){
       vec3 base = texture2D(tScene, vUv).rgb;
@@ -233,6 +261,7 @@ window.PTD = window.PTD || {};
       base = mix(base, texture2D(tSoft, vUv).rgb, far);
       float ao = mix(1.0, texture2D(tAO, vUv).r, aoK);
       base *= ao * ao;
+      base *= grade;                                               // time of day: warm dusk, dark blue night (glows stay bright)
       vec3 c = base + (texture2D(tB1, vUv).rgb * 0.7 + texture2D(tB2, vUv).rgb * 1.0) * strength;
       c = aces(c * exposure);
       float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
@@ -263,7 +292,7 @@ window.PTD = window.PTD || {};
       this.aoBlur = sh(AOBLUR_FS, { tDiffuse: { value: null }, dir: { value: new T.Vector2() } });
       this.comp = sh(COMP_FS, { tScene: { value: null }, tB1: { value: null }, tB2: { value: null }, strength: { value: 1.0 },
         tAO: { value: null }, aoK: { value: 0 }, tSoft: { value: null }, tilt: { value: 0 },
-        exposure: { value: 0.95 }, flash: { value: 0 }, flashColor: { value: new T.Color(0.9, 0.05, 0.05) } });
+        exposure: { value: 0.95 }, grade: { value: new T.Color(1, 1, 1) }, flash: { value: 0 }, flashColor: { value: new T.Color(0.9, 0.05, 0.05) } });
       this.bloom = true; this.aoOn = true; this.aoRadius = 80; this.tiltK = 0;
       this.white = new T.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1); this.white.needsUpdate = true;
     }
@@ -354,11 +383,12 @@ window.PTD = window.PTD || {};
       const g = this.game, map = g.map;
       const S = this.scene = new T.Scene();
       S.background = new T.Color(0xcfe8ff);   // the sky dome (scenery3d) covers this
-      S.fog = new T.Fog(0xa9d4ff, 9000, 30000);
+      S.fog = new T.Fog(0xb9dccf, 12000, 42000);   // warm jungle haze over the far trees
       S.environment = buildEnvironment(this.gl);
 
       // light: sunny key light with shadows + sky/ground fill
-      S.add(new T.HemisphereLight(0xcfe6ff, 0xa58fd0, 1.05));
+      S.add(this.hemi = new T.HemisphereLight(0xd8efff, 0x7d8f55, 1.05));
+      this.sunDir = new T.Vector3(-0.4, 0.8, 0.3).normalize(); this.day = { t: 0.3, sun: 1, night: 0, dusk: 0 };
       const key = this.key = new T.DirectionalLight(0xffefd2, 1.4);
       key.castShadow = this.quality === 'high';
       key.shadow.mapSize.set(this.quality === 'high' ? 4096 : 1024, this.quality === 'high' ? 4096 : 1024);
@@ -366,20 +396,14 @@ window.PTD = window.PTD || {};
       const sc = key.shadow.camera; sc.near = 100; sc.far = 9000;
       S.add(key); S.add(key.target);
 
-      // the table: board texture on felt and a mahogany rim; it floats in the sky (scenery3d adds the edge and clouds)
+      // the clearing: board texture (grass and dirt roads) on the ground; scenery3d adds the jungle around it
       const size = map.size * map.cell;
       const bc = PTD.Art.boardCanvas(map, g.players, 6);
       if (PTD.Scenery3D) PTD.Scenery3D.decorateBoard(bc.canvas.getContext('2d'), bc.px, map, 6);
       const board = this.boardTex = canvasTex(bc.canvas);
-      const top = new T.Mesh(new T.PlaneGeometry(size, size), new T.MeshToonMaterial({ map: board, color: '#d8f0d8', gradientMap: toonRamp() }));
+      const top = new T.Mesh(new T.PlaneGeometry(size, size), new T.MeshToonMaterial({ map: board, color: '#c4d4bc', gradientMap: toonRamp() }));
       top.rotation.x = -Math.PI / 2; top.receiveShadow = true;
       S.add(top);
-      const wood = mat('lacquer', () => new T.MeshToonMaterial({ color: '#c97a3e', map: woodTexture(), gradientMap: toonRamp() }));
-      const half = size / 2, rimW = 420, rimH = 160;
-      [[0, half + rimW / 2, size + rimW * 2, rimW], [0, -half - rimW / 2, size + rimW * 2, rimW], [half + rimW / 2, 0, rimW, size], [-half - rimW / 2, 0, rimW, size]].forEach(([x, y, w, d]) => {
-        const m = new T.Mesh(new T.BoxGeometry(w, rimH + 900, d), wood);
-        m.position.copy(W2T(x, y, rimH / 2 - 450)); m.receiveShadow = true; S.add(m);
-      });
 
       this.buildFelt(board);
       this.buildWalls();
@@ -422,15 +446,15 @@ window.PTD = window.PTD || {};
     buildFelt(boardTex) {
       const map = this.game.map, cell = map.cell, size = map.size * cell, org = map.origin;
       const rects = this.rectsOf(0);
-      const m = new T.MeshToonMaterial({ map: boardTex, color: '#d8f0d8', gradientMap: toonRamp() });
+      const m = new T.MeshToonMaterial({ map: boardTex, color: '#c4d4bc', gradientMap: toonRamp() });
       m.onBeforeCompile = (sh) => {
         sh.vertexShader = 'varying float vSide;\n' + sh.vertexShader.replace('#include <uv_vertex>', `#include <uv_vertex>
           { vec4 wp = modelMatrix * instanceMatrix * vec4(position, 1.0);
             vMapUv = vec2((wp.x - (${org.toFixed(1)})) / ${size.toFixed(1)}, (-wp.z - (${org.toFixed(1)})) / ${size.toFixed(1)});
             vSide = 1.0 - step(0.5, abs(normal.y)); }`);
-        // the plateau's sides are plain dark felt rather than a stretched copy of the edge pixels
+        // the bank's sides are crumbly earth rather than a stretched copy of the edge pixels
         sh.fragmentShader = 'varying float vSide;\n' + sh.fragmentShader.replace('#include <map_fragment>',
-          '#include <map_fragment>\n diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.09, 0.42, 0.2), vSide);');
+          '#include <map_fragment>\n diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.42, 0.29, 0.17), vSide);');
       };
       const mesh = new T.InstancedMesh(new T.BoxGeometry(1, 1, 1), m, rects.length);
       const d = new T.Object3D();
@@ -465,23 +489,28 @@ window.PTD = window.PTD || {};
         }
         open.clear(); for (const [k, v] of next) open.set(k, v);
       }
-      const keep = rects.filter(r => {
+      // trim hedges back off the empty border strip, where the crowd stands
+      const B = 16;
+      for (const r of rects) { r.x0 = Math.max(r.x0, B); r.y0 = Math.max(r.y0, B); r.x1 = Math.min(r.x1, N - B); r.y1 = Math.min(r.y1, N - B); }
+      const keep = rects.filter(r => r.x1 > r.x0 && r.y1 > r.y0).filter(r => {
         const cx = map.origin + (r.x0 + r.x1) / 2 * cell, cy = map.origin + (r.y0 + r.y1) / 2 * cell;
         const edge = r.x0 === 0 || r.y0 === 0 || r.x1 === N || r.y1 === N;
         return !(Math.abs(cx) < 700 && Math.abs(cy) < 700) && !(edge && (r.x1 - r.x0 > 300 || r.y1 - r.y0 > 300));
       });
-      const H = 130;
-      // polished mahogany sides, a gold trim band, and a plump tufted-velvet cushion on top
-      const lacquer = mat('lacquerWall', () => new T.MeshToonMaterial({ color: '#b0502c', map: woodTexture(), gradientMap: toonRamp() }));
-      const velvet = mat('velvetTop', () => {
-        const m = new T.MeshStandardMaterial({ map: velvetTexture(), color: '#dcc4c8', roughness: 0.85, envMapIntensity: 0.4 });
+      const H = 80;
+      // jungle hedgerows: leafy sides on a mossy stone footing, with a rounded bushy top
+      // (scenery3d piles individual bushes on top so the outline is never a straight box)
+      const leafy = (key, tint, scale) => mat(key, () => {
+        const m = new T.MeshToonMaterial({ map: leafTexture(), color: tint, gradientMap: toonRamp() });
         m.onBeforeCompile = (sh) => {
           sh.vertexShader = sh.vertexShader.replace('#include <uv_vertex>', `#include <uv_vertex>
-            { vec4 wp = modelMatrix * instanceMatrix * vec4(position, 1.0); vMapUv = vec2(wp.x, -wp.z) / 340.0; }`);
+            { vec4 wp = modelMatrix * instanceMatrix * vec4(position, 1.0); vMapUv = (abs(normal.y) > 0.5 ? vec2(wp.x, -wp.z) : vec2(wp.x - wp.z, wp.y)) / ${scale}.0; }`);
         };
         return m;
       });
-      const goldTrim = std('#f0b92a', { metalness: 0.9, roughness: 0.22, emissive: new T.Color('#3a2400') });
+      const lacquer = leafy('hedgeSide', '#c8d8b8', 260);
+      const velvet = leafy('hedgeTop', '#ffffff', 300);
+      const goldTrim = mat('hedgeStone', () => new T.MeshToonMaterial({ color: '#8d8a78', gradientMap: toonRamp() }));
       const body = new T.InstancedMesh(new T.BoxGeometry(1, 1, 1), lacquer, keep.length);
       const trim = new T.InstancedMesh(new T.BoxGeometry(1, 1, 1), goldTrim, keep.length);
       const cap = new T.InstancedMesh(geo('pillow', () => {
@@ -502,8 +531,8 @@ window.PTD = window.PTD || {};
         const w = (r.x1 - r.x0) * cell, h = (r.y1 - r.y0) * cell;
         const cx = map.origin + r.x0 * cell + w / 2, cy = map.origin + r.y0 * cell + h / 2;
         d.position.copy(W2T(cx, cy, H / 2)); d.scale.set(w, H, h); d.updateMatrix(); body.setMatrixAt(i, d.matrix);
-        d.position.y = H + 6; d.scale.set(w + 14, 14, h + 14); d.updateMatrix(); trim.setMatrixAt(i, d.matrix);
-        d.position.y = H + 22; d.scale.set(Math.max(10, w - 10), 20, Math.max(10, h - 10)); d.updateMatrix(); cap.setMatrixAt(i, d.matrix);
+        d.position.y = 9; d.scale.set(w + 18, 18, h + 18); d.updateMatrix(); trim.setMatrixAt(i, d.matrix);
+        d.position.y = H - 4; d.scale.set(w + 16, 26, h + 16); d.updateMatrix(); cap.setMatrixAt(i, d.matrix);
       });
       body.castShadow = body.receiveShadow = true; cap.receiveShadow = true; trim.castShadow = true;
       this.scene.add(body); this.scene.add(trim); this.scene.add(cap);
@@ -559,7 +588,7 @@ window.PTD = window.PTD || {};
       const n = 900, pos = new Float32Array(n * 3);
       for (let i = 0; i < n; i++) { pos[i * 3] = (Math.random() - 0.5) * 13000; pos[i * 3 + 1] = Math.random() * 3000; pos[i * 3 + 2] = (Math.random() - 0.5) * 13000; }
       const geom = new T.BufferGeometry(); geom.setAttribute('position', new T.BufferAttribute(pos, 3));
-      const m = new T.PointsMaterial({ map: glowTexture(), color: 0xffd9a0, size: 26, transparent: true, opacity: 0.55, depthWrite: false, blending: T.AdditiveBlending });
+      const m = new T.PointsMaterial({ map: glowTexture(), color: 0xe4ff8a, size: 22, transparent: true, opacity: 0.5, depthWrite: false, blending: T.AdditiveBlending });   // drifting pollen and fireflies
       this.dust = new T.Points(geom, m);
       this.scene.add(this.dust);
     }
@@ -617,9 +646,10 @@ window.PTD = window.PTD || {};
           o.head.position.z = firing ? -5 : o.head.position.z * 0.8;   // recoil
         }
         const stunned = t.stunT > 0;
+        this.towerStatus(o, t, time, dt);
         if (stunned && !o.dizzy) o.dizzy = this.makeDizzy(o);
         if (o.dizzy) {
-          o.dizzy.visible = stunned;
+          o.dizzy.visible = stunned && (t.stunKind === 'trip' || t.stunKind === 'slam' || !t.stunKind);
           if (stunned) {
             o.dizzy.rotation.y += dt * 4;
             o.dizzy.position.y = o.height * 1.02 + Math.sin(time * 6) * 6;
@@ -643,6 +673,45 @@ window.PTD = window.PTD || {};
     }
 
     // A ring of spinning cartoon stars over a paralyzed tower.
+    // Boss effects on a tower: a grey smoke cloud (misses shots), green vines (rooted), a purple
+    // hex sigil spinning overhead (hexed). Built on first use, shown while the effect lasts.
+    towerStatus(o, t, time, dt) {
+      const smoke = t.smokeT > 0, roots = t.stunT > 0 && t.stunKind === 'roots', hex = t.stunT > 0 && t.stunKind === 'hex';
+      if (smoke && !o.smoke) {
+        const g = o.smoke = new T.Group(), m = mat('smokePuff', () => new T.MeshLambertMaterial({ color: '#c9cdc6', transparent: true, opacity: 0.82, depthWrite: false }));
+        for (let i = 0; i < 7; i++) { const p = new T.Mesh(geo('puff', () => new T.IcosahedronGeometry(1, 1)), m); p.userData.a = i / 7 * TAU; p.userData.h = 40 + (i % 3) * 45; g.add(p); }
+        o.grp.add(g);
+      }
+      if (o.smoke) {
+        o.smoke.visible = smoke;
+        if (smoke) o.smoke.children.forEach((p, i) => {
+          const a = p.userData.a + time * 0.6, k = 1 + Math.sin(time * 2 + i) * 0.15;
+          p.position.set(Math.cos(a) * 70, p.userData.h + Math.sin(time * 1.5 + i) * 12, Math.sin(a) * 70);
+          p.scale.setScalar(48 * k);
+        });
+      }
+      if (roots && !o.roots) {
+        const g = o.roots = new T.Group(), m = mat('vine', () => new T.MeshToonMaterial({ color: '#3f8f2f', gradientMap: toonRamp() }));
+        const leafM = mat('vineLeaf', () => new T.MeshToonMaterial({ color: '#7ed957', gradientMap: toonRamp() }));
+        for (let i = 0; i < 3; i++) {
+          const pts = []; for (let k = 0; k <= 16; k++) { const a = k / 16 * TAU * 1.5 + i * 2.1, h = k * 9; pts.push(new T.Vector3(Math.cos(a) * (78 - k), h, Math.sin(a) * (78 - k))); }
+          g.add(new T.Mesh(new T.TubeGeometry(new T.CatmullRomCurve3(pts), 40, 9, 6), m));
+          for (let k = 2; k < 16; k += 4) { const lf = new T.Mesh(geo('leafBlob', () => new T.SphereGeometry(1, 6, 4)), leafM); lf.position.copy(pts[k]); lf.scale.set(18, 6, 12); lf.rotation.y = k; g.add(lf); }
+        }
+        g.children.forEach(c => { c.userData.ownGeo = c.geometry.type === 'TubeGeometry'; });
+        o.grp.add(g);
+      }
+      if (o.roots) { o.roots.visible = roots; if (roots) o.roots.scale.y = Math.min(1, (o.roots.scale.y || 0) + dt * 3); else o.roots.scale.y = 0.01; }
+      if (hex && !o.hex) {
+        const g = o.hex = new T.Group();
+        const sig = new T.Mesh(new T.RingGeometry(70, 92, 5, 1), new T.MeshBasicMaterial({ color: new T.Color('#c77dff').multiplyScalar(2), transparent: true, opacity: 0.85, side: T.DoubleSide, depthWrite: false, blending: T.AdditiveBlending }));
+        sig.rotation.x = -Math.PI / 2; sig.userData.ownGeo = true; g.add(sig);
+        const orb = this.glowSprite('#b45cff', 150, 0.8); orb.position.y = 0; g.add(orb);
+        o.grp.add(g);
+      }
+      if (o.hex) { o.hex.visible = hex; if (hex) { o.hex.position.y = (o.height || 120) + 60 + Math.sin(time * 3) * 8; o.hex.children[0].rotation.z = time * 2; } }
+    }
+
     makeDizzy(o) {
       const g = new T.Group();
       const tex = textTexture('\u2605', '#ffe066', 64);
@@ -763,7 +832,7 @@ window.PTD = window.PTD || {};
         const want = Math.atan2(Math.cos(c.dir), -Math.sin(c.dir));   // face the walking direction
         let d = (want - ud.rig.rotation.y + Math.PI * 3) % TAU - Math.PI;
         ud.rig.rotation.y += d * Math.min(1, dt * 10);
-        const moving = !(c.wait > 0) && !(c.stunT > 0) && !(c.fallT > 0);
+        const moving = !(c.wait > 0) && !(c.stunT > 0) && !(c.fallT > 0) && !(c.windT > 0);
         if (c.hp < ud.lastHp - 0.5) {
           ud.hitT = 0.12;
           const hitY = c.boss ? c.radius * 3.5 : c.radius * 2.2;
@@ -810,7 +879,7 @@ window.PTD = window.PTD || {};
             if (slime > 0.12) this.slimeSpray(ud, ud.rig.rotation.y);
           }
         }
-        ud.anim(t + c.phaseOff, moving, dt, { speed: c.slowF || 1, hit: ud.hitT / 0.12, stun: c.stunT > 0, slow: c.slowF < 1, intro, fall, slime });
+        ud.anim(t + c.phaseOff, moving, dt, { speed: c.slowF || 1, hit: ud.hitT / 0.12, stun: c.stunT > 0, slow: c.slowF < 1, intro, fall, slime, windup: c.windT > 0 });
         // little dust puffs at their feet, and the odd gold glint from the loot
         ud.fxT = (ud.fxT || Math.random() * 0.4) - dt;
         if (moving && ud.fxT <= 0 && this.particles.length < 700 && this.view.zoom > 0.08) {
@@ -843,7 +912,14 @@ window.PTD = window.PTD || {};
           ud.headG.rotation.z = Math.max(-0.35, Math.min(0.35, bb.a));
           ud.headG.rotation.x = Math.max(-0.25, Math.min(0.25, bb.b));
           ud.aura.rotation.z += dt;
-          ud.aura.material.opacity = 0.35 + 0.25 * Math.sin(t * 4);
+          if (c.windT > 0) {   // charging: the ring under him flares in the attack's colour
+            const A = PTD.BOSS_ATTACKS[ud.boss.attack || 'mortar'];
+            ud.aura.material.color.set(A.color).multiplyScalar(2.2); ud.aura.material.opacity = 0.6 + 0.35 * Math.sin(t * 20);
+            ud.aura.scale.setScalar(1 + 0.25 * Math.abs(Math.sin(t * 10)));
+          } else {
+            ud.aura.material.color.set('#ffcf40').multiplyScalar(0.8); ud.aura.scale.setScalar(1);
+            ud.aura.material.opacity = 0.35 + 0.25 * Math.sin(t * 4);
+          }
         }
         const hp = o.userData_hp, f = Math.max(0, c.hp / c.maxHp);
         hp.grp.visible = hp.always || f < 0.999;
@@ -1160,8 +1236,40 @@ window.PTD = window.PTD || {};
       const span = Math.min(6500, dist * 0.9 + 600);
       const sc = this.key.shadow.camera;
       sc.left = -span; sc.right = span; sc.top = span; sc.bottom = -span; sc.updateProjectionMatrix();
-      this.key.position.set(tx - 1800, 3800, tz + 1400);
+      const L = this.lightDir || this.sunDir;
+      this.key.position.set(tx + L.x * 4800, L.y * 4800, tz + L.z * 4800);
       this.key.target.position.set(tx, 0, tz);
+    }
+
+    // Day and night: one full day every DAY_LEN seconds of game time (shared by everyone online).
+    // The sun rises, crosses and sets; then the moon and stars come out and the light turns blue.
+    updateDay() {
+      const DAY_LEN = 300;
+      const dt = (((this.game.time || 0) / DAY_LEN + 0.3) % 1 + 1) % 1;   // 0 = midnight, 0.25 sunrise, 0.5 noon; games start at about 7am
+      const a = (dt - 0.25) * TAU, h = Math.sin(a);
+      this.sunDir.set(-Math.cos(a) * 0.85, h, 0.45).normalize();
+      const sun = smoothstep(-0.08, 0.3, h), moon = smoothstep(-0.05, 0.3, -h);
+      const dusk = Math.exp(-Math.pow(h / 0.22, 2));                     // warm light near the horizon
+      const night = 1 - smoothstep(-0.25, 0.12, h);
+      this.day = { t: dt, sun, night, dusk, h };
+      const k = this.key;
+      if (sun >= moon) {
+        this.lightDir = this.sunDir.clone(); if (this.lightDir.y < 0.25) { this.lightDir.y = 0.25; this.lightDir.normalize(); }
+        k.color.set('#ffefd2').lerp(DUSK_C, dusk * 0.85);
+        k.intensity = 1.4 * sun;
+      } else {
+        this.lightDir = this.sunDir.clone().negate(); if (this.lightDir.y < 0.3) { this.lightDir.y = 0.3; this.lightDir.normalize(); }
+        k.color.set('#8fb0ff');
+        k.intensity = 0.5 * moon;
+      }
+      const hm = this.hemi;
+      hm.color.copy(HEMI_DAY.sky).lerp(HEMI_NIGHT.sky, night).lerp(DUSK_SKY, dusk * 0.55 * (1 - night * 0.5));
+      hm.groundColor.copy(HEMI_DAY.ground).lerp(HEMI_NIGHT.ground, night);
+      hm.intensity = 0.3 + 0.75 * smoothstep(-0.15, 0.35, h);
+      this.scene.fog.color.copy(FOG_DAY).lerp(FOG_NIGHT, night).lerp(FOG_DUSK, dusk * (1 - night * 0.6) * 0.7);
+      this.scene.background.copy(this.scene.fog.color);
+      if (this.post && this.post.comp) { const u = this.post.comp.uniforms; u.exposure.value = 0.95; u.grade.value.setRGB(1, 1, 1).lerp(GRADE_DUSK, dusk * (1 - night)).lerp(GRADE_NIGHT, night); }
+      if (this.dust) { this.dust.material.opacity = 0.45 + 0.5 * night; this.dust.material.size = 22 + 12 * night; }
     }
 
     fitPlayer(p) {
@@ -1237,6 +1345,30 @@ window.PTD = window.PTD || {};
 
     mine(c) { const me = this.game.human; return !!me && c.owner === me.id; }
 
+    // A boss is winding up: a filled warning disc grows on the ground where the strike will land.
+    warn(x, y, r, color, dur) {
+      const col = new T.Color(color);
+      const fill = new T.Mesh(geo('warnDisc', () => new T.CircleGeometry(1, 48)), new T.MeshBasicMaterial({ color: col.clone().multiplyScalar(1.4), transparent: true, opacity: 0.3, depthWrite: false }));
+      const ring = new T.Mesh(geo('warnRing', () => new T.RingGeometry(0.92, 1, 64)), new T.MeshBasicMaterial({ color: col.clone().multiplyScalar(2.2), transparent: true, opacity: 0.95, depthWrite: false }));
+      for (const m of [fill, ring]) { m.rotation.x = -Math.PI / 2; m.position.copy(W2T(x, y, FELT_H + 8)); m.renderOrder = 4; this.scene.add(m); }
+      ring.scale.setScalar(r);
+      (this.warnings || (this.warnings = [])).push({ fill, ring, r, t: 0, dur });
+    }
+
+    updateWarnings(dt) {
+      if (!this.warnings) return;
+      this.warnings = this.warnings.filter(w => {
+        w.t += dt;
+        const k = Math.min(1, w.t / w.dur);
+        w.fill.scale.setScalar(Math.max(1, w.r * k));
+        w.fill.material.opacity = 0.2 + 0.25 * k;
+        w.ring.material.opacity = 0.6 + 0.4 * Math.sin(w.t * 18);
+        if (w.t < w.dur) return true;
+        for (const m of [w.fill, w.ring]) { this.scene.remove(m); m.material.dispose(); }
+        return false;
+      });
+    }
+
     // Cinematic touches driven by game events (called from the UI's event handler).
     event(type, d) {
       const me = this.game.human;
@@ -1245,9 +1377,20 @@ window.PTD = window.PTD || {};
         const back = { x: this.cam.x, y: this.cam.y, zoom: this.cam.zoom, yaw: this.cam.yaw, tilt: this.cam.tilt };
         this.cine = { t: 0, dur: 6.5, back, follow: true, to: { x: s.x + 300, y: s.y - 600, zoom: 0.42, yaw: this.cam.yaw, tilt: -8 } };
         this.bossLanded = false;
+      } else if (type === 'bossWindup') {
+        const A = PTD.BOSS_ATTACKS[d.attack] || PTD.BOSS_ATTACKS.mortar;
+        this.warn(d.x, d.y, d.r || A.r, A.color, PTD.BOSS_WIND);
+        if (d.creep && this.mine(d.creep)) sound('select');
+      } else if (type === 'bossAttack' && d.attack && d.attack !== 'mortar' && d.tower && d.tower.x != null) {
+        const at = W2T(d.tower.x, d.tower.y, FELT_H + 60);
+        if (d.attack === 'smoke') { this.burst(at, '#d6dbd3', 34, 420, 1.0); }
+        else if (d.attack === 'slam') { this.burst(at, '#c8a070', 36, 640, 0.7); if (d.creep && this.mine(d.creep)) this.shake = Math.max(this.shake, 90); }
+        else if (d.attack === 'roots') { this.burst(at, '#79dc80', 24, 380, 0.8); }
+        else if (d.attack === 'hex') { this.burst(at.setY(FELT_H + 200), '#c77dff', 30, 360, 0.8); }
       } else if (type === 'leak' && d.player === me) { this.flash = 0.55; this.shake = Math.max(this.shake, 60); }
-      else if (type === 'kill' && d.boss) { this.shake = Math.max(this.shake, 110); }
+      else if (type === 'kill' && d.boss) { this.shake = Math.max(this.shake, 110); if (this.scenery && this.scenery.cheer) this.scenery.cheer(); }
       else if (type === 'waveCleared' && me && me.alive) {
+        if (this.scenery && this.scenery.cheer) this.scenery.cheer();
         const v = me.lane.path[me.lane.path.length - 1];   // coin fountain at your vault
         this.coinShower(W2T(v.x, v.y, 200), 22); this.burst(W2T(v.x, v.y, 260), '#ffd34d', 26, 620, 0.8);
         this.game.fx.push({ kind: 'ring', x: v.x, y: v.y, t: 0, life: 1.0, color: '#ffd34d', r: 900 });
@@ -1306,12 +1449,14 @@ window.PTD = window.PTD || {};
       }
       this.shake *= Math.pow(0.02, dt);
       this.flash = Math.max(0, this.flash - dt * 1.4);
+      this.updateDay();
       this.placeCamera(this.view);
 
       this.syncTowers(ui || {}, now, dt);
       this.syncCreeps(now, dt);
       this.syncShots(dt);
       this.syncFx();
+      this.updateWarnings(dt);
       this.updateParticles(dt);
       this.updateFloaters(dt);
 

@@ -26,10 +26,10 @@ Ultra drops to Fast automatically if the frame rate struggles. The 3D view uses 
 
 ## What carried over from the map
 - The 8-lane board, maze roads, spawn corners and central vault (read from the map's pathing grid and regions).
-- 5-card hands, one swap of up to 4 cards, combining poker hands into towers, folding, and dealer tipping with the original odds table.
+- 5-card hands, one swap of up to 4 cards, combining poker hands into towers, folding, and dealer tipping with a rebalanced odds table.
 - Hand-winner gold bonus, 45-second hand timer, 12 looters per wave every 2s, 30 levels with 5 bosses.
 - Tower stats per suit and per hand, looter HP, bounties and leak costs.
-- The final boss shells your towers; Two Pair towers are immune.
+- Each boss disrupts towers differently: Adam smokes them, Fuller slams a cluster, Marvin hexes a tower, Smooth stuns towers when he falls, Tree roots a cluster, and Giga Chad shells towers. Two Pair towers resist the shell.
 
 ## Looter crews
 Every round brings a different themed crew (Pirates, Ninjas, Zombies, Space Aliens, Cavemen, Robots, Wizards, Cowboys, Mummies, Clowns, Vikings, Ghosts, Dino Riders, Knights, Astronauts, Garden Gnomes, Luchadores, Vampires, Yetis, Chefs, Deep-Sea Divers, Mad Scientists, Gladiators, Jungle Explorers, Disco Crew). Each wave mixes three crew members and ends with a bigger leader wearing a floating crown. Looks are cosmetic: each round keeps the original HP, bounty and leak cost. Edit crews in `js/crews3d.js` and the round order in `PTD.LEVELS` (`js/data.js`).
@@ -59,7 +59,7 @@ The original was built for 8 humans covering each other's lanes, so solo it's br
 | `js/models.js` | Blender models embedded for the 3D view (generated) |
 | `js/looters3d.js` | 3D looter character kit (heads, hats, props, ghost and dino-rider bodies, walks) and the bosses |
 | `js/crews3d.js` | The 25 themed looter crews, one per round: 3 members plus a crowned leader each |
-| `js/scenery3d.js` | Marquee lights, lane chevrons, wall clutter, spawn arches, jackpot plaza, the casino room |
+| `js/scenery3d.js` | The jungle clearing: weathered paving and grass tufts on the old roads, hedgerow bushes and tiki landmarks, stone gates, the temple ring, a river with bridges and wildlife, the forest, a cheering crowd of villagers and animals, and the day/night sky |
 | `js/towers3d.js` | Tower models: one per suit for single cards, one per hand type for combos, each fitted to a size budget that grows gently with the hand |
 | `js/bossfaces.js` | Boss faces inlined for the 3D view (regenerate with `python tools/embed-faces.py`) |
 | `js/audio.js` | Synthesised sound: layered effects with a small reverb, and a musical sting per looter crew |
@@ -67,3 +67,9 @@ The original was built for 8 humans covering each other's lanes, so solo it's br
 | `js/ui.js` | HUD, lobby, input, main loop |
 | `tools/sim.js` | Headless AI-vs-AI balance runs |
 | `tools/browser-test.js` | Headless Chrome play-test with screenshots |
+
+## Day and night
+One full day lasts five minutes of game time (`DAY_LEN` in `updateDay`, `js/render3d.js`). The sun rises, crosses and sets, then the moon and stars come out and torches glow. It runs off the game clock, so everyone at an online table sees the same time of day.
+
+## Balance handoff
+Dealer tips still cost 10 gold each and retain the success check in `js/game.js` (`resolveTip`). The outcome matrix in `js/data.js` now reserves straight flushes for the outer 10% buckets at nine tips; eight tips top out at quads. The final boss pair attacks every six seconds, and the earlier bosses every eight seconds while moving. Every attack is telegraphed: the boss plants his feet and a warning circle marks the spot for `PTD.BOSS_WIND` seconds before it lands. Attack radius, duration, colour and warning text are in `PTD.BOSS_ATTACKS` (`js/bosses.js`). Review these values after human multiplayer matches; the AI simulation is a stability check, not a substitute for player balance data.

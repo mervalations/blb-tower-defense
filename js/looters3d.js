@@ -1027,6 +1027,9 @@ window.PTD = window.PTD || {};
       if (spec.tail) tail(ctx, spec.tail, spec.tailC || base);
       if (!spec.noSack && !spec.tanks) sack(ctx, ctx.sackAt);
     }
+    // chibi proportions: an oversized head and big googly eyes read as a cartoon even at a distance
+    if (humanoid && ctx.head && spec.body !== 'dino') { ctx.head.scale.multiplyScalar(1.24); ctx.head.position.y += 0.1; }
+    ctx.eyes.forEach(e => e.scale.multiplyScalar(1.28));
     if (spec.scale) rig.scale.setScalar(spec.scale);
     if (variant === 3) leaderCrown(ctx);
 
@@ -1082,18 +1085,18 @@ window.PTD = window.PTD || {};
 
       if (parts.legs) {
         const legAmp = gait.step * (st.stun ? 0 : 1);
-        parts.legs[0].rotation.x = sw * legAmp; parts.legs[1].rotation.x = -sw * legAmp;
+        parts.legs[0].rotation.x = sw * legAmp * 1.2; parts.legs[1].rotation.x = -sw * legAmp * 1.2;
         parts.arms[0].rotation.x = armHold + sw * 0.1; parts.arms[0].rotation.z = -0.25;
         let rArm = spec.armsFwd ? -1.45 + sw * 0.12 : spec.prop ? -0.6 + sw * 0.15 : -sw * gait.arms;
         let rArmZ = 0;
-        const bob = moving ? Math.abs(Math.sin(ph)) * gait.bob * 1.6 : Math.sin(t * 2) * 0.015;
+        const bob = moving ? Math.abs(Math.sin(ph)) * gait.bob * 2.1 : Math.sin(t * 2) * 0.02;
         rig.position.y = bob - gait.crouch + (gait === GAIT.glide ? 0.06 + Math.sin(t * 2.2) * 0.05 : 0);
         rig.rotation.x = gait.lean - (st.hit || 0) * 0.45;                    // lean, or flinch back when hit
         rig.rotation.z = moving ? Math.sin(ph * 0.5) * gait.sway : 0;
         const land = moving ? Math.abs(Math.sin(ph)) : 0;   // stretch on the way up, squash as each foot lands
-        const squash = 1 - (st.hit || 0) * 0.15 + (moving ? (land - 0.5) * 0.14 : 0);
+        const squash = 1 - (st.hit || 0) * 0.22 + (moving ? (land - 0.5) * 0.24 : Math.sin(t * 2.4) * 0.02);   // rubbery squash and stretch
         rig.scale.set(baseScale / Math.sqrt(squash), baseScale * squash, baseScale / Math.sqrt(squash));
-        if (ctx.head) { ctx.head.rotation.z = sw * 0.06; ctx.head.rotation.y = 0; ctx.head.rotation.x = 0; }
+        if (ctx.head) { ctx.head.rotation.z = sw * 0.12; ctx.head.rotation.y = 0; ctx.head.rotation.x = 0; }   // big wobbly head
         switch (active) {
           case 'dance': rig.rotation.y = prog * TAU * 2 * (q > 0 ? 1 : 0); parts.arms[0].rotation.x = armHold * (1 - q) - q * 2.8; rArmZ = Math.sin(t * 16) * 0.5 * q;
             parts.legs[0].rotation.x += Math.sin(t * 20) * 0.6 * q; parts.legs[1].rotation.x -= Math.sin(t * 20) * 0.6 * q; rig.position.y += Math.abs(Math.sin(t * 20)) * 0.12 * q; break;
@@ -1163,7 +1166,7 @@ window.PTD = window.PTD || {};
       rig.traverse(o => { if (o.isMesh) before.set(o, o.material); });
       rig.updateMatrixWorld(true);
       const big = (o) => { if (!o.geometry.boundingSphere) o.geometry.computeBoundingSphere(); const sc = new T.Vector3(); o.matrixWorld.decompose(new T.Vector3(), new T.Quaternion(), sc); return o.geometry.boundingSphere.radius * Math.max(sc.x, sc.y, sc.z) > 0.07 && ctx.detail.indexOf(o) < 0; };
-      PTD.Toon.cartoonize(rig, { width: 3.2, outlineIf: big, style: { bright: 0.6, rim: '#bfe4ff' } });
+      PTD.Toon.cartoonize(rig, { width: 4.2, outlineIf: big, style: { bright: 0.68, rim: '#d6f0ff' } });
       const swap = new Map();
       for (const [o, m] of before) if (o.material !== m) { if (!swap.has(m)) swap.set(m, new Set()); swap.get(m).add(o.material); }
       ctx.flash = [...new Set(ctx.flash.flatMap(m => swap.has(m) ? [...swap.get(m)] : [m]))].filter(m => m.emissive);
@@ -1481,6 +1484,13 @@ window.PTD = window.PTD || {};
       rig.rotation.z = moving ? Math.sin(ph * 0.5) * (club ? 0.22 : 0.1) : 0;   // club feet: big side-to-side waddle
       if (club) feet.forEach((f, k) => { f.rotation.y = -(k ? 1 : -1) * (0.85 + (moving ? Math.sin(ph + k * Math.PI) * 0.2 : 0)); });
       torso.rotation.y = sw * 0.15;
+      if (st.windup) {   // winding up an attack: plant the feet, haul both arms back overhead, tremble with effort
+        const jit = Math.sin(t * 34) * 0.07;
+        legs[0].rotation.x = -0.35; legs[1].rotation.x = 0.35;
+        arms[0].rotation.x = -2.7 + jit; arms[1].rotation.x = -2.7 - jit; arms[0].rotation.z = -0.35; arms[1].rotation.z = 0.35;
+        rig.rotation.x = -0.18; rig.rotation.z = jit * 0.5; rig.position.y = 0;
+        torso.scale.setScalar(1 + 0.06 * Math.abs(Math.sin(t * 16)));
+      }
       if (st.slime != null) {   // slime blast: both arms thrust straight ahead, palms shaking with the force
         const k = Math.min(1, st.slime * 6), jit = Math.sin(t * 40) * 0.06;
         arms[0].rotation.x = arms[1].rotation.x = -1.5 * k + jit; arms[0].rotation.z = 0.25 * k; arms[1].rotation.z = -0.25 * k;
